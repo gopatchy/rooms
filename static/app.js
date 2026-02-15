@@ -1,4 +1,4 @@
-const CLIENT_ID = '{{.env.GOOGLE_CLIENT_ID}}';
+const CLIENT_ID = '{{.env.CLIENT_ID}}';
 
 function getProfile() {
     const data = localStorage.getItem('profile');

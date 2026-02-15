@@ -26,12 +26,13 @@ var schema string
 var templates *template.Template
 
 func main() {
-	dsn := os.Getenv("PGCONN")
-	if dsn == "" {
-		log.Fatal("PGCONN environment variable is required")
+	for _, key := range []string{"PGCONN", "CLIENT_ID", "CLIENT_SECRET"} {
+		if os.Getenv(key) == "" {
+			log.Fatalf("%s environment variable is required", key)
+		}
 	}
 
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("postgres", os.Getenv("PGCONN"))
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
 	}
@@ -114,7 +115,7 @@ func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, err := idtoken.Validate(context.Background(), credential, os.Getenv("GOOGLE_CLIENT_ID"))
+	payload, err := idtoken.Validate(context.Background(), credential, os.Getenv("CLIENT_ID"))
 	if err != nil {
 		log.Println("failed to validate token:", err)
 		http.Error(w, "invalid token", http.StatusUnauthorized)
@@ -135,7 +136,7 @@ func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func signEmail(email string) string {
-	h := hmac.New(sha256.New, []byte(os.Getenv("TOKEN_SECRET")))
+	h := hmac.New(sha256.New, []byte(os.Getenv("CLIENT_SECRET")))
 	h.Write([]byte(email))
 	sig := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 	return base64.RawURLEncoding.EncodeToString([]byte(email)) + "." + sig
