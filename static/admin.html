@@ -9,50 +9,30 @@
             font-family: var(--wa-font-sans);
             max-width: 800px;
             margin: 0 auto;
-            padding: 1rem;
+            padding: 0.5rem;
             opacity: 0;
+            font-size: 0.9rem;
         }
         .header {
             display: flex;
             align-items: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
         }
-        .header img {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-        }
+        .header img { width: 32px; height: 32px; border-radius: 50%; }
         .header .spacer { flex: 1; }
-        wa-card {
-            margin-bottom: 1rem;
-            display: block;
-        }
-        wa-card h3 { margin: 0 0 0.5rem 0; }
-        .admin-row {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.25rem;
-        }
-        .add-admin-row {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-        }
-        .add-admin-row wa-input { flex: 1; }
-        .create-trip {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 2rem;
-        }
+        h2 { margin: 0.75rem 0 0.25rem; font-size: 1.1rem; }
+        wa-card { margin-bottom: 0.5rem; display: block; --spacing: 0.6rem; }
+        wa-button::part(base) { padding: 0.15rem 0.4rem; min-height: 0; }
+        wa-button[size="small"]::part(base) { font-size: 0.8rem; }
+        wa-input::part(base) { min-height: 0; }
+        .trip-header { display: flex; align-items: center; gap: 0.25rem; }
+        .trip-header h3 { flex: 1; margin: 0; font-size: 1rem; }
+        .admin-row { display: flex; align-items: center; gap: 0.25rem; }
+        .add-row { display: flex; gap: 0.25rem; margin-top: 0.25rem; }
+        .add-row wa-input { flex: 1; }
+        .create-trip { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
         .create-trip wa-input { flex: 1; }
-        .trip-header {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .trip-header h3 { flex: 1; }
     </style>
 </head>
 <body>
@@ -66,8 +46,8 @@
         </div>
         <h2>Create Trip</h2>
         <div class="create-trip">
-            <wa-input id="new-trip-name" placeholder="Trip name"></wa-input>
-            <wa-button variant="brand" id="create-trip-btn">Create</wa-button>
+            <wa-input id="new-trip-name" placeholder="Trip name" size="small"></wa-input>
+            <wa-button size="small" id="create-trip-btn">+</wa-button>
         </div>
         <h2>Trips</h2>
         <div id="trips"></div>

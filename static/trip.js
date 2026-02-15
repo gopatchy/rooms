@@ -23,26 +23,23 @@ async function loadStudents() {
     container.innerHTML = '';
     for (const student of students) {
         const card = document.createElement('wa-card');
+
         const header = document.createElement('div');
         header.className = 'student-header';
-        const h3 = document.createElement('h3');
-        h3.textContent = student.name + ' (' + student.email + ')';
+        const label = document.createElement('span');
+        label.textContent = student.name + ' (' + student.email + ')';
         const deleteBtn = document.createElement('wa-button');
-        deleteBtn.variant = 'danger';
         deleteBtn.size = 'small';
-        deleteBtn.textContent = 'Remove';
+        deleteBtn.variant = 'danger';
+        deleteBtn.textContent = '\u00d7';
         deleteBtn.addEventListener('click', async () => {
             if (!confirm('Remove student "' + student.name + '"?')) return;
             await api('DELETE', '/api/trips/' + tripID + '/students/' + student.id);
             loadStudents();
         });
-        header.appendChild(h3);
+        header.appendChild(label);
         header.appendChild(deleteBtn);
         card.appendChild(header);
-
-        const parentLabel = document.createElement('strong');
-        parentLabel.textContent = 'Parents:';
-        card.appendChild(parentLabel);
 
         for (const parent of student.parents) {
             const row = document.createElement('div');
@@ -50,9 +47,9 @@ async function loadStudents() {
             const span = document.createElement('span');
             span.textContent = parent.email;
             const removeBtn = document.createElement('wa-button');
-            removeBtn.variant = 'danger';
             removeBtn.size = 'small';
-            removeBtn.textContent = 'Remove';
+            removeBtn.variant = 'text';
+            removeBtn.textContent = '\u00d7';
             removeBtn.addEventListener('click', async () => {
                 await api('DELETE', '/api/trips/' + tripID + '/students/' + student.id + '/parents/' + parent.id);
                 loadStudents();
@@ -63,13 +60,13 @@ async function loadStudents() {
         }
 
         const addRow = document.createElement('div');
-        addRow.className = 'add-parent-row';
+        addRow.className = 'add-row';
         const input = document.createElement('wa-input');
         input.placeholder = 'Parent email';
+        input.size = 'small';
         const addBtn = document.createElement('wa-button');
-        addBtn.variant = 'neutral';
         addBtn.size = 'small';
-        addBtn.textContent = 'Add Parent';
+        addBtn.textContent = '+';
         addBtn.addEventListener('click', async () => {
             const email = input.value.trim();
             if (!email) return;

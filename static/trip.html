@@ -9,52 +9,31 @@
             font-family: var(--wa-font-sans);
             max-width: 800px;
             margin: 0 auto;
-            padding: 1rem;
+            padding: 0.5rem;
             opacity: 0;
+            font-size: 0.9rem;
         }
         .header {
             display: flex;
             align-items: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
         }
-        .header img {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-        }
+        .header img { width: 32px; height: 32px; border-radius: 50%; }
         .header .spacer { flex: 1; }
-        wa-card {
-            margin-bottom: 1rem;
-            display: block;
-        }
-        wa-card h3 { margin: 0 0 0.5rem 0; }
-        .parent-row {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.25rem;
-            margin-left: 1rem;
-        }
-        .add-parent-row {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-            margin-left: 1rem;
-        }
-        .add-parent-row wa-input { flex: 1; }
-        .add-student {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 2rem;
-        }
+        h2 { margin: 0.75rem 0 0.25rem; font-size: 1.1rem; }
+        h3 { margin: 0.5rem 0 0.25rem; font-size: 1rem; }
+        wa-card { margin-bottom: 0.5rem; display: block; --spacing: 0.6rem; }
+        wa-button::part(base) { padding: 0.15rem 0.4rem; min-height: 0; }
+        wa-button[size="small"]::part(base) { font-size: 0.8rem; }
+        wa-input::part(base) { min-height: 0; }
+        .student-header { display: flex; align-items: center; gap: 0.25rem; }
+        .student-header span { flex: 1; font-weight: bold; }
+        .parent-row { display: flex; align-items: center; gap: 0.25rem; margin-left: 0.75rem; }
+        .add-row { display: flex; gap: 0.25rem; margin-top: 0.25rem; margin-left: 0.75rem; }
+        .add-row wa-input { flex: 1; }
+        .add-student { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
         .add-student wa-input { flex: 1; }
-        .student-header {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .student-header h3 { flex: 1; }
     </style>
 </head>
 <body>
@@ -69,9 +48,9 @@
         <h2 id="trip-name"></h2>
         <h3>Add Student</h3>
         <div class="add-student">
-            <wa-input id="new-student-name" placeholder="Student name"></wa-input>
-            <wa-input id="new-student-email" placeholder="Student email"></wa-input>
-            <wa-button variant="brand" id="add-student-btn">Add</wa-button>
+            <wa-input id="new-student-name" placeholder="Name" size="small"></wa-input>
+            <wa-input id="new-student-email" placeholder="Email" size="small"></wa-input>
+            <wa-button size="small" id="add-student-btn">+</wa-button>
         </div>
         <h3>Students</h3>
         <div id="students"></div>

@@ -24,6 +24,7 @@ async function loadTrips() {
     container.innerHTML = '';
     for (const trip of trips) {
         const card = document.createElement('wa-card');
+
         const header = document.createElement('div');
         header.className = 'trip-header';
         const h3 = document.createElement('h3');
@@ -32,9 +33,9 @@ async function loadTrips() {
         tripLink.textContent = trip.name;
         h3.appendChild(tripLink);
         const deleteBtn = document.createElement('wa-button');
-        deleteBtn.variant = 'danger';
         deleteBtn.size = 'small';
-        deleteBtn.textContent = 'Delete Trip';
+        deleteBtn.variant = 'danger';
+        deleteBtn.textContent = '\u00d7';
         deleteBtn.addEventListener('click', async () => {
             if (!confirm('Delete trip "' + trip.name + '"?')) return;
             await api('DELETE', '/api/trips/' + trip.id);
@@ -44,19 +45,15 @@ async function loadTrips() {
         header.appendChild(deleteBtn);
         card.appendChild(header);
 
-        const adminLabel = document.createElement('strong');
-        adminLabel.textContent = 'Trip Admins:';
-        card.appendChild(adminLabel);
-
         for (const admin of trip.admins) {
             const row = document.createElement('div');
             row.className = 'admin-row';
             const span = document.createElement('span');
             span.textContent = admin.email;
             const removeBtn = document.createElement('wa-button');
-            removeBtn.variant = 'danger';
             removeBtn.size = 'small';
-            removeBtn.textContent = 'Remove';
+            removeBtn.variant = 'text';
+            removeBtn.textContent = '\u00d7';
             removeBtn.addEventListener('click', async () => {
                 await api('DELETE', '/api/trips/' + trip.id + '/admins/' + admin.id);
                 loadTrips();
@@ -67,13 +64,13 @@ async function loadTrips() {
         }
 
         const addRow = document.createElement('div');
-        addRow.className = 'add-admin-row';
+        addRow.className = 'add-row';
         const input = document.createElement('wa-input');
         input.placeholder = 'Admin email';
+        input.size = 'small';
         const addBtn = document.createElement('wa-button');
-        addBtn.variant = 'neutral';
         addBtn.size = 'small';
-        addBtn.textContent = 'Add Admin';
+        addBtn.textContent = '+';
         addBtn.addEventListener('click', async () => {
             const email = input.value.trim();
             if (!email) return;
