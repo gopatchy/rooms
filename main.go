@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	texttemplate "text/template"
 	"log"
 	"net/http"
 	"os"
@@ -23,7 +24,10 @@ import (
 //go:embed schema.sql
 var schema string
 
-var templates *template.Template
+var (
+	htmlTemplates *template.Template
+	jsTemplates   *texttemplate.Template
+)
 
 func main() {
 	for _, key := range []string{"PGCONN", "CLIENT_ID", "CLIENT_SECRET"} {
@@ -47,8 +51,8 @@ func main() {
 		log.Fatalf("failed to apply schema: %v", err)
 	}
 
-	templates = template.Must(template.New("").ParseGlob("static/*.html"))
-	template.Must(templates.ParseGlob("static/*.js"))
+	htmlTemplates = template.Must(template.New("").ParseGlob("static/*.html"))
+	jsTemplates = texttemplate.Must(texttemplate.New("").ParseGlob("static/*.js"))
 
 	http.HandleFunc("/", handleStatic)
 	http.HandleFunc("POST /auth/google/callback", handleGoogleCallback)
@@ -90,17 +94,24 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimPrefix(path, "/")
 
-	if strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".js") {
-		t := templates.Lookup(name)
+	if strings.HasSuffix(name, ".html") {
+		t := htmlTemplates.Lookup(name)
 		if t == nil {
 			http.NotFound(w, r)
 			return
 		}
-		if strings.HasSuffix(name, ".html") {
-			w.Header().Set("Content-Type", "text/html")
-		} else {
-			w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Content-Type", "text/html")
+		t.Execute(w, templateData())
+		return
+	}
+
+	if strings.HasSuffix(name, ".js") {
+		t := jsTemplates.Lookup(name)
+		if t == nil {
+			http.NotFound(w, r)
+			return
 		}
+		w.Header().Set("Content-Type", "application/javascript")
 		t.Execute(w, templateData())
 		return
 	}
