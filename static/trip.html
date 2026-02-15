@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trip - Rooms</title>
+    <style>
+        body {
+            font-family: var(--wa-font-sans);
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1rem;
+            opacity: 0;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .header img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+        }
+        .header .spacer { flex: 1; }
+        wa-card {
+            margin-bottom: 1rem;
+            display: block;
+        }
+        wa-card h3 { margin: 0 0 0.5rem 0; }
+        .parent-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+            margin-left: 1rem;
+        }
+        .add-parent-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            margin-left: 1rem;
+        }
+        .add-parent-row wa-input { flex: 1; }
+        .add-student {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+        .add-student wa-input { flex: 1; }
+        .student-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .student-header h3 { flex: 1; }
+    </style>
+</head>
+<body>
+    <div id="signin" style="display: none; align-items: center; justify-content: center; height: 100vh;"></div>
+    <div id="main" style="display: none;">
+        <div class="header">
+            <img data-bind="picture" alt="Profile">
+            <span data-bind="name"></span>
+            <span class="spacer"></span>
+            <wa-button variant="neutral" size="small" id="logout-btn">Switch User</wa-button>
+        </div>
+        <h2 id="trip-name"></h2>
+        <h3>Add Student</h3>
+        <div class="add-student">
+            <wa-input id="new-student-name" placeholder="Student name"></wa-input>
+            <wa-input id="new-student-email" placeholder="Student email"></wa-input>
+            <wa-button variant="brand" id="add-student-btn">Add</wa-button>
+        </div>
+        <h3>Students</h3>
+        <div id="students"></div>
+    </div>
+    <script type="module" src="/trip.js"></script>
+</body>
+</html>

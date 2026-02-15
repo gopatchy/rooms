@@ -27,7 +27,10 @@ async function loadTrips() {
         const header = document.createElement('div');
         header.className = 'trip-header';
         const h3 = document.createElement('h3');
-        h3.textContent = trip.name;
+        const tripLink = document.createElement('a');
+        tripLink.href = '/trip/' + trip.id;
+        tripLink.textContent = trip.name;
+        h3.appendChild(tripLink);
         const deleteBtn = document.createElement('wa-button');
         deleteBtn.variant = 'danger';
         deleteBtn.size = 'small';

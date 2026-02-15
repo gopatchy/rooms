@@ -65,6 +65,14 @@ func main() {
 	http.HandleFunc("DELETE /api/trips/{tripID}", handleDeleteTrip(db))
 	http.HandleFunc("POST /api/trips/{tripID}/admins", handleAddTripAdmin(db))
 	http.HandleFunc("DELETE /api/trips/{tripID}/admins/{adminID}", handleRemoveTripAdmin(db))
+	http.HandleFunc("GET /trip/{tripID}", serveHTML("trip.html"))
+	http.HandleFunc("GET /trip.js", serveJS("trip.js"))
+	http.HandleFunc("GET /api/trips/{tripID}", handleGetTrip(db))
+	http.HandleFunc("GET /api/trips/{tripID}/students", handleListStudents(db))
+	http.HandleFunc("POST /api/trips/{tripID}/students", handleCreateStudent(db))
+	http.HandleFunc("DELETE /api/trips/{tripID}/students/{studentID}", handleDeleteStudent(db))
+	http.HandleFunc("POST /api/trips/{tripID}/students/{studentID}/parents", handleAddParent(db))
+	http.HandleFunc("DELETE /api/trips/{tripID}/students/{studentID}/parents/{parentID}", handleRemoveParent(db))
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(); err != nil {
 			http.Error(w, "db unhealthy", http.StatusServiceUnavailable)
@@ -182,6 +190,30 @@ func requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	return email, true
+}
+
+func isTripAdmin(db *sql.DB, email string, tripID int64) bool {
+	var exists bool
+	db.QueryRow("SELECT EXISTS(SELECT 1 FROM trip_admins WHERE trip_id = $1 AND email = $2)", tripID, email).Scan(&exists)
+	return exists
+}
+
+func requireTripAdmin(db *sql.DB, w http.ResponseWriter, r *http.Request) (string, int64, bool) {
+	email, ok := authorize(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return "", 0, false
+	}
+	tripID, err := strconv.ParseInt(r.PathValue("tripID"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid trip ID", http.StatusBadRequest)
+		return "", 0, false
+	}
+	if !isAdmin(email) && !isTripAdmin(db, email, tripID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return "", 0, false
+	}
+	return email, tripID, true
 }
 
 func handleAdminCheck(w http.ResponseWriter, r *http.Request) {
@@ -334,6 +366,178 @@ func handleRemoveTripAdmin(db *sql.DB) http.HandlerFunc {
 		}
 		if n, _ := result.RowsAffected(); n == 0 {
 			http.Error(w, "trip admin not found", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleGetTrip(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		var name string
+		err := db.QueryRow("SELECT name FROM trips WHERE id = $1", tripID).Scan(&name)
+		if err != nil {
+			http.Error(w, "trip not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": tripID, "name": name})
+	}
+}
+
+func handleListStudents(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		rows, err := db.Query(`
+			SELECT s.id, s.name, s.email, COALESCE(
+				json_agg(json_build_object('id', p.id, 'email', p.email)) FILTER (WHERE p.id IS NOT NULL),
+				'[]'
+			)
+			FROM students s
+			LEFT JOIN parents p ON p.student_id = s.id
+			WHERE s.trip_id = $1
+			GROUP BY s.id, s.name, s.email
+			ORDER BY s.name`, tripID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type parent struct {
+			ID    int64  `json:"id"`
+			Email string `json:"email"`
+		}
+		type student struct {
+			ID      int64    `json:"id"`
+			Name    string   `json:"name"`
+			Email   string   `json:"email"`
+			Parents []parent `json:"parents"`
+		}
+
+		var students []student
+		for rows.Next() {
+			var s student
+			var parentsJSON string
+			if err := rows.Scan(&s.ID, &s.Name, &s.Email, &parentsJSON); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.Unmarshal([]byte(parentsJSON), &s.Parents)
+			students = append(students, s)
+		}
+		if students == nil {
+			students = []student{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(students)
+	}
+}
+
+func handleCreateStudent(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" || body.Email == "" {
+			http.Error(w, "name and email are required", http.StatusBadRequest)
+			return
+		}
+		var id int64
+		err := db.QueryRow("INSERT INTO students (trip_id, name, email) VALUES ($1, $2, $3) RETURNING id", tripID, body.Name, body.Email).Scan(&id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": id, "name": body.Name, "email": body.Email})
+	}
+}
+
+func handleDeleteStudent(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		studentID, err := strconv.ParseInt(r.PathValue("studentID"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid student ID", http.StatusBadRequest)
+			return
+		}
+		result, err := db.Exec("DELETE FROM students WHERE id = $1 AND trip_id = $2", studentID, tripID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			http.Error(w, "student not found", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleAddParent(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		studentID, err := strconv.ParseInt(r.PathValue("studentID"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid student ID", http.StatusBadRequest)
+			return
+		}
+		var body struct {
+			Email string `json:"email"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Email == "" {
+			http.Error(w, "email is required", http.StatusBadRequest)
+			return
+		}
+		var id int64
+		err = db.QueryRow("INSERT INTO parents (student_id, email) VALUES ((SELECT id FROM students WHERE id = $1 AND trip_id = $2), $3) RETURNING id",
+			studentID, tripID, body.Email).Scan(&id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": id, "email": body.Email})
+	}
+}
+
+func handleRemoveParent(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		parentID, err := strconv.ParseInt(r.PathValue("parentID"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid parent ID", http.StatusBadRequest)
+			return
+		}
+		result, err := db.Exec(`DELETE FROM parents WHERE id = $1 AND student_id IN (SELECT id FROM students WHERE trip_id = $2)`, parentID, tripID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			http.Error(w, "parent not found", http.StatusNotFound)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
