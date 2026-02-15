@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	_ "embed"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,9 @@ import (
 
 	_ "github.com/lib/pq"
 )
+
+//go:embed schema.sql
+var schema string
 
 func main() {
 	dsn := os.Getenv("PGCONN")
@@ -26,6 +30,10 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 	log.Println("connected to database")
+
+	if _, err := db.Exec(schema); err != nil {
+		log.Fatalf("failed to apply schema: %v", err)
+	}
 
 	http.Handle("/", http.FileServer(http.Dir("static")))
 
