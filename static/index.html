@@ -6,7 +6,15 @@
     <title>Rooms</title>
 </head>
 <body>
-    <h1>Rooms</h1>
-    <p>Roommate selection for student trips.</p>
+    <div id="signin" style="display: none; align-items: center; justify-content: center; height: 100vh;"></div>
+    <div id="main" style="display: none;">
+        <h1>Rooms</h1>
+        <p>Signed in as <span data-bind="email"></span></p>
+    </div>
+    <script type="module">
+        import { init } from '/app.js';
+        const profile = await init();
+        document.getElementById('main').style.display = 'block';
+    </script>
 </body>
 </html>
