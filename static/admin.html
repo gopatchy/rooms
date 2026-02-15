@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Rooms</title>
+    <style>
+        body {
+            font-family: var(--wa-font-sans);
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1rem;
+            opacity: 0;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .header img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+        }
+        .header .spacer { flex: 1; }
+        wa-card {
+            margin-bottom: 1rem;
+            display: block;
+        }
+        wa-card h3 { margin: 0 0 0.5rem 0; }
+        .admin-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+        .add-admin-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .add-admin-row wa-input { flex: 1; }
+        .create-trip {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+        .create-trip wa-input { flex: 1; }
+        .trip-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .trip-header h3 { flex: 1; }
+    </style>
+</head>
+<body>
+    <div id="signin" style="display: none; align-items: center; justify-content: center; height: 100vh;"></div>
+    <div id="main" style="display: none;">
+        <div class="header">
+            <img data-bind="picture" alt="Profile">
+            <span data-bind="name"></span>
+            <span class="spacer"></span>
+            <wa-button variant="neutral" size="small" id="logout-btn">Switch User</wa-button>
+        </div>
+        <h2>Create Trip</h2>
+        <div class="create-trip">
+            <wa-input id="new-trip-name" placeholder="Trip name"></wa-input>
+            <wa-button variant="brand" id="create-trip-btn">Create</wa-button>
+        </div>
+        <h2>Trips</h2>
+        <div id="trips"></div>
+    </div>
+    <script type="module" src="/admin.js"></script>
+</body>
+</html>

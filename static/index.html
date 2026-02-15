@@ -10,11 +10,18 @@
     <div id="main" style="display: none;">
         <h1>Rooms</h1>
         <p>Signed in as <span data-bind="email"></span></p>
+        <p id="admin-link" style="display: none;"><a href="/admin">Admin Dashboard</a></p>
     </div>
     <script type="module">
-        import { init } from '/app.js';
+        import { init, api } from '/app.js';
         const profile = await init();
         document.getElementById('main').style.display = 'block';
+        try {
+            const check = await api('GET', '/api/admin/check');
+            if (check.admin) {
+                document.getElementById('admin-link').style.display = 'block';
+            }
+        } catch (e) {}
     </script>
 </body>
 </html>
