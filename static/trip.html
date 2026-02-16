@@ -62,6 +62,7 @@
         .constraint-add { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.3rem; }
         .constraint-add select { font-size: 0.75rem; padding: 0.15rem; border: 1px solid var(--wa-color-neutral-300, #ccc); border-radius: 0.25rem; }
         #conflicts { margin-bottom: 0.5rem; }
+        #mismatches { margin-bottom: 0.5rem; }
         .conflict-row { margin-bottom: 0.2rem; }
         .conflict-icon { background: var(--wa-color-danger-50, #dc3545); color: white; border-radius: 0.15rem; padding: 0 0.15rem; font-size: 0.6rem; line-height: 1.2; vertical-align: middle; margin-right: 0.1rem; display: inline-block; }
     </style>
@@ -81,6 +82,7 @@
             <input id="room-size" type="number" min="1">
         </div>
         <div id="conflicts"></div>
+        <div id="mismatches"></div>
         <div id="students"></div>
         <wa-details summary="Add Student">
             <div class="add-form">

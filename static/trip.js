@@ -57,6 +57,45 @@ async function loadStudents() {
         }
     }
 
+    const kindSpan = (kind) => {
+        const span = document.createElement('span');
+        span.textContent = kindLabels[kind];
+        span.style.color = kindColor[kind];
+        span.style.fontWeight = 'bold';
+        return span;
+    };
+
+    const allOveralls = {};
+    for (const s of students) {
+        const myC = constraints.filter(c => c.student_a_id === s.id);
+        const byPeer = {};
+        for (const c of myC) {
+            if (!byPeer[c.student_b_id]) byPeer[c.student_b_id] = {};
+            byPeer[c.student_b_id][c.level] = c;
+        }
+        allOveralls[s.id] = {};
+        for (const [peerId, levels] of Object.entries(byPeer)) {
+            const eff = levels.admin || levels.parent || levels.student;
+            if (eff) allOveralls[s.id][peerId] = eff;
+        }
+    }
+
+    const mismatchList = [];
+    for (const s of students) {
+        for (const [bId, effA] of Object.entries(allOveralls[s.id])) {
+            if (!allOveralls[bId] || !allOveralls[bId][s.id]) continue;
+            const effB = allOveralls[bId][s.id];
+            if (isPositive(effA.kind) && !isPositive(effB.kind)) {
+                mismatchList.push({
+                    nameA: s.name,
+                    nameB: students.find(x => x.id === parseInt(bId)).name,
+                    kindA: effA.kind,
+                    kindB: effB.kind,
+                });
+            }
+        }
+    }
+
     const conflictsEl = document.getElementById('conflicts');
     const conflictsWasOpen = conflictsEl.querySelector('wa-details')?.open;
     conflictsEl.innerHTML = '';
@@ -64,13 +103,6 @@ async function loadStudents() {
         const det = document.createElement('wa-details');
         det.summary = '\u26a0 Overrides (' + conflictList.length + ')';
         if (conflictsWasOpen) det.open = true;
-        const kindSpan = (kind) => {
-            const span = document.createElement('span');
-            span.textContent = kindLabels[kind];
-            span.style.color = kindColor[kind];
-            span.style.fontWeight = 'bold';
-            return span;
-        };
         for (const conflict of conflictList) {
             const div = document.createElement('div');
             div.className = 'conflict-row';
@@ -89,6 +121,25 @@ async function loadStudents() {
             det.appendChild(div);
         }
         conflictsEl.appendChild(det);
+    }
+
+    const mismatchesEl = document.getElementById('mismatches');
+    const mismatchesWasOpen = mismatchesEl.querySelector('wa-details')?.open;
+    mismatchesEl.innerHTML = '';
+    if (mismatchList.length > 0) {
+        const det = document.createElement('wa-details');
+        det.summary = '\u26a0 Mismatches (' + mismatchList.length + ')';
+        if (mismatchesWasOpen) det.open = true;
+        for (const m of mismatchList) {
+            const div = document.createElement('div');
+            div.className = 'conflict-row';
+            div.appendChild(document.createTextNode(m.nameA + ' \u2192 ' + m.nameB + ': '));
+            div.appendChild(kindSpan(m.kindA));
+            div.appendChild(document.createTextNode(' but ' + m.nameB + ' \u2192 ' + m.nameA + ': '));
+            div.appendChild(kindSpan(m.kindB));
+            det.appendChild(div);
+        }
+        mismatchesEl.appendChild(det);
     }
 
     const container = document.getElementById('students');
@@ -167,26 +218,14 @@ async function loadStudents() {
         const cDetails = document.createElement('wa-details');
         cDetails.summary = 'Constraints';
 
-        const myConstraints = constraints.filter(c => c.student_a_id === student.id || c.student_b_id === student.id);
+        const myConstraints = constraints.filter(c => c.student_a_id === student.id);
 
-        const byPeer = {};
-        for (const c of myConstraints) {
-            const otherId = c.student_a_id === student.id ? c.student_b_id : c.student_a_id;
-            if (!byPeer[otherId]) byPeer[otherId] = {};
-            byPeer[otherId][c.level] = c;
-        }
-        const overall = [];
-        for (const levels of Object.values(byPeer)) {
-            const eff = levels.admin || levels.parent || levels.student;
-            if (eff) overall.push(eff);
-        }
+        const overall = Object.values(allOveralls[student.id] || {});
         if (overall.length > 0) {
             overall.sort((a, b) => {
                 const kd = kindOrder[a.kind] - kindOrder[b.kind];
                 if (kd !== 0) return kd;
-                const na = a.student_a_id === student.id ? a.student_b_name : a.student_a_name;
-                const nb = b.student_a_id === student.id ? b.student_b_name : b.student_a_name;
-                return na.localeCompare(nb);
+                return a.student_b_name.localeCompare(b.student_b_name);
             });
             const group = document.createElement('div');
             group.className = 'constraint-group';
@@ -195,11 +234,10 @@ async function loadStudents() {
             levelLabel.textContent = 'Overall';
             group.appendChild(levelLabel);
             for (const c of overall) {
-                const otherName = c.student_a_id === student.id ? c.student_b_name : c.student_a_name;
                 const tag = document.createElement('wa-tag');
                 tag.size = 'small';
                 tag.variant = kindVariant[c.kind];
-                tag.textContent = kindLabels[c.kind] + ': ' + otherName;
+                tag.textContent = kindLabels[c.kind] + ': ' + c.student_b_name;
                 tag.title = 'From ' + capitalize(c.level);
                 group.appendChild(tag);
             }
@@ -212,9 +250,7 @@ async function loadStudents() {
             lc.sort((a, b) => {
                 const kd = kindOrder[a.kind] - kindOrder[b.kind];
                 if (kd !== 0) return kd;
-                const na = a.student_a_id === student.id ? a.student_b_name : a.student_a_name;
-                const nb = b.student_a_id === student.id ? b.student_b_name : b.student_a_name;
-                return na.localeCompare(nb);
+                return a.student_b_name.localeCompare(b.student_b_name);
             });
             const group = document.createElement('div');
             group.className = 'constraint-group';
@@ -223,7 +259,7 @@ async function loadStudents() {
             levelLabel.textContent = level.charAt(0).toUpperCase() + level.slice(1);
             group.appendChild(levelLabel);
             for (const c of lc) {
-                const otherName = c.student_a_id === student.id ? c.student_b_name : c.student_a_name;
+                const otherName = c.student_b_name;
                 const tag = document.createElement('wa-tag');
                 tag.size = 'small';
                 tag.variant = kindVariant[c.kind];

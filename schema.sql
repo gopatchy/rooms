@@ -43,6 +43,6 @@ CREATE TABLE IF NOT EXISTS roommate_constraints (
     student_b_id BIGINT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     kind constraint_kind NOT NULL,
     level constraint_level NOT NULL,
-    CHECK(student_a_id < student_b_id),
+    CHECK(student_a_id != student_b_id),
     UNIQUE(student_a_id, student_b_id, level)
 );

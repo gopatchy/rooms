@@ -654,10 +654,6 @@ func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "invalid level", http.StatusBadRequest)
 			return
 		}
-		a, b := body.StudentAID, body.StudentBID
-		if a > b {
-			a, b = b, a
-		}
 		var id int64
 		err := db.QueryRow(`
 			INSERT INTO roommate_constraints (student_a_id, student_b_id, kind, level)
@@ -666,7 +662,7 @@ func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
 			JOIN students sb ON sb.id = $2 AND sb.trip_id = $5
 			WHERE sa.id = $1 AND sa.trip_id = $5
 			ON CONFLICT (student_a_id, student_b_id, level) DO UPDATE SET kind = EXCLUDED.kind
-			RETURNING id`, a, b, body.Kind, body.Level, tripID).Scan(&id)
+			RETURNING id`, body.StudentAID, body.StudentBID, body.Kind, body.Level, tripID).Scan(&id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
