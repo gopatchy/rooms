@@ -481,12 +481,16 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
         if (solutions.length === 1) {
             renderSolution(solutions[0], container);
         } else if (solutions.length > 1) {
+            const optionLabel = (i) => {
+                const a = 'A'.charCodeAt(0);
+                return i < 26 ? String.fromCharCode(a + i) : String.fromCharCode(a + Math.floor(i / 26) - 1) + String.fromCharCode(a + (i % 26));
+            };
             const tabGroup = document.createElement('wa-tab-group');
             for (let si = 0; si < solutions.length; si++) {
                 const tab = document.createElement('wa-tab');
                 tab.slot = 'nav';
                 tab.panel = 'sol-' + si;
-                tab.textContent = 'Option ' + (si + 1);
+                tab.textContent = optionLabel(si);
                 tabGroup.appendChild(tab);
             }
             for (let si = 0; si < solutions.length; si++) {
