@@ -21,6 +21,8 @@ import (
 
 	"github.com/lib/pq"
 	"google.golang.org/api/idtoken"
+
+	"rooms/solver"
 )
 
 //go:embed schema.sql
@@ -1167,13 +1169,13 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		}
 		defer crows.Close()
 
-		type constraint struct {
-			aID, bID     int64
-			kind, level  string
+		type dbConstraint struct {
+			aID, bID    int64
+			kind, level string
 		}
-		var allConstraints []constraint
+		var allConstraints []dbConstraint
 		for crows.Next() {
-			var c constraint
+			var c dbConstraint
 			if err := crows.Scan(&c.aID, &c.bID, &c.kind, &c.level); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -1182,7 +1184,6 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		}
 
 		type pairKey struct{ a, b int64 }
-		overalls := map[pairKey]string{}
 		byPair := map[pairKey]map[string]string{}
 		for _, c := range allConstraints {
 			pk := pairKey{c.aID, c.bID}
@@ -1192,6 +1193,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			byPair[pk][c.level] = c.kind
 		}
 		levelPriority := []string{"admin", "parent", "student"}
+		overalls := map[pairKey]string{}
 		for pk, levels := range byPair {
 			for _, lev := range levelPriority {
 				if kind, ok := levels[lev]; ok {
@@ -1207,348 +1209,24 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		}
 		n := len(studentIDs)
 
-		mustTogether := map[[2]int]bool{}
-		mustApart := map[[2]int]bool{}
+		var constraints []solver.Constraint
 		for pk, kind := range overalls {
-			ai, bi := idx[pk.a], idx[pk.b]
-			switch kind {
-			case "must":
-				p := [2]int{ai, bi}
-				if p[0] > p[1] { p[0], p[1] = p[1], p[0] }
-				mustTogether[p] = true
-			case "must_not":
-				p := [2]int{ai, bi}
-				if p[0] > p[1] { p[0], p[1] = p[1], p[0] }
-				mustApart[p] = true
-			}
+			constraints = append(constraints, solver.Constraint{
+				StudentA: idx[pk.a],
+				StudentB: idx[pk.b],
+				Kind:     kind,
+			})
 		}
 
-		uf := make([]int, n)
-		for i := range uf { uf[i] = i }
-		var ufFind func(int) int
-		ufFind = func(x int) int {
-			if uf[x] != x { uf[x] = ufFind(uf[x]) }
-			return uf[x]
-		}
-		ufUnion := func(a, b int) {
-			ra, rb := ufFind(a), ufFind(b)
-			if ra != rb { uf[ra] = rb }
-		}
+		rng := rand.New(rand.NewSource(rand.Int63()))
+		solutions := solver.SolveFast(n, roomSize, pnMultiple, npCost, constraints, solver.DefaultParams, rng)
 
-		for p := range mustTogether {
-			ufUnion(p[0], p[1])
-		}
-
-		hasConflict := false
-		for p := range mustApart {
-			if ufFind(p[0]) == ufFind(p[1]) {
-				hasConflict = true
-				break
-			}
-		}
-
-		if hasConflict {
+		if solutions == nil {
 			http.Error(w, "hard conflicts exist, resolve before solving", http.StatusBadRequest)
 			return
 		}
 
-		groups := map[int][]int{}
-		for i := range n {
-			root := ufFind(i)
-			groups[root] = append(groups[root], i)
-		}
-
-		hasPrefer := make([]bool, n)
-		for pk, kind := range overalls {
-			if kind == "prefer" {
-				hasPrefer[idx[pk.a]] = true
-			}
-		}
-
-		score := func(assignment []int) int {
-			s := 0
-			gotPrefer := make([]bool, n)
-			for pk, kind := range overalls {
-				ai, bi := idx[pk.a], idx[pk.b]
-				sameRoom := assignment[ai] == assignment[bi]
-				switch kind {
-				case "prefer":
-					if sameRoom {
-						s++
-						gotPrefer[ai] = true
-					}
-				case "prefer_not":
-					if sameRoom { s -= pnMultiple }
-				}
-			}
-			for i := range n {
-				if hasPrefer[i] && !gotPrefer[i] {
-					s -= npCost
-				}
-			}
-			return s
-		}
-
-		feasible := func(assignment []int) bool {
-			for p := range mustApart {
-				if assignment[p[0]] == assignment[p[1]] { return false }
-			}
-			roomCounts := map[int]int{}
-			for _, room := range assignment {
-				roomCounts[room]++
-			}
-			for _, cnt := range roomCounts {
-				if cnt > roomSize { return false }
-			}
-			return true
-		}
-
 		numRooms := (n + roomSize - 1) / roomSize
-
-		assignment := make([]int, n)
-		groupList := make([][]int, 0, len(groups))
-		for _, members := range groups {
-			groupList = append(groupList, members)
-		}
-		slices.SortFunc(groupList, func(a, b []int) int { return len(b) - len(a) })
-
-		roomCap := make([]int, numRooms)
-		for i := range roomCap { roomCap[i] = roomSize }
-
-		placed := false
-		var placeGroups func(gi int) bool
-		placeGroups = func(gi int) bool {
-			if gi >= len(groupList) { return true }
-			grp := groupList[gi]
-			for room := range numRooms {
-				if roomCap[room] < len(grp) { continue }
-				ok := true
-				for _, member := range grp {
-					for p := range mustApart {
-						partner := -1
-						if p[0] == member { partner = p[1] }
-						if p[1] == member { partner = p[0] }
-						if partner >= 0 && assignment[partner] == room {
-							alreadyPlaced := false
-							for gj := range gi {
-								if slices.Contains(groupList[gj], partner) {
-									alreadyPlaced = true
-									break
-								}
-							}
-							if alreadyPlaced { ok = false; break }
-						}
-					}
-					if !ok { break }
-				}
-				if !ok { continue }
-				for _, member := range grp { assignment[member] = room }
-				roomCap[room] -= len(grp)
-				if placeGroups(gi + 1) { return true }
-				roomCap[room] += len(grp)
-			}
-			return false
-		}
-		placed = placeGroups(0)
-
-		if !placed {
-			for i := range n {
-				assignment[i] = i % numRooms
-			}
-		}
-
-		initialAssignment := make([]int, n)
-		copy(initialAssignment, assignment)
-
-		bestScore := score(assignment)
-		var bestSolutions [][]int
-		seen := map[string]bool{}
-		normalizeKey := func(a []int) string {
-			rm := map[int][]int{}
-			for i, room := range a {
-				rm[room] = append(rm[room], i)
-			}
-			var gs [][]int
-			for _, members := range rm {
-				slices.Sort(members)
-				gs = append(gs, members)
-			}
-			slices.SortFunc(gs, func(a, b []int) int { return a[0] - b[0] })
-			var buf strings.Builder
-			for _, g := range gs {
-				for i, m := range g {
-					if i > 0 {
-						buf.WriteByte(',')
-					}
-					buf.WriteString(strconv.Itoa(m))
-				}
-				buf.WriteByte(';')
-			}
-			return buf.String()
-		}
-		addSolution := func(a []int, s int) {
-			if s > bestScore {
-				bestScore = s
-				bestSolutions = nil
-				seen = map[string]bool{}
-			}
-			if s == bestScore {
-				key := normalizeKey(a)
-				if !seen[key] {
-					seen[key] = true
-					bestSolutions = append(bestSolutions, slices.Clone(a))
-				}
-			}
-		}
-		addSolution(assignment, bestScore)
-
-		roomCount := func(a []int, room int) int {
-			c := 0
-			for _, r := range a {
-				if r == room { c++ }
-			}
-			return c
-		}
-
-		uniqueGroups := make([]int, 0, len(groups))
-		for root := range groups {
-			uniqueGroups = append(uniqueGroups, root)
-		}
-		slices.Sort(uniqueGroups)
-
-		hillClimb := func(assignment []int) int {
-			currentScore := score(assignment)
-			for {
-				bestDelta := 0
-				bestMove := -1
-				bestTarget := -1
-				bestSwapJ := -1
-
-				for gi, gRoot := range uniqueGroups {
-					grp := groups[gRoot]
-					gRoom := assignment[grp[0]]
-
-					for room := range numRooms {
-						if room == gRoom { continue }
-						if roomCount(assignment, room)+len(grp) > roomSize { continue }
-						for _, m := range grp { assignment[m] = room }
-						if feasible(assignment) {
-							delta := score(assignment) - currentScore
-							if delta > bestDelta {
-								bestDelta = delta
-								bestMove = gi
-								bestTarget = room
-								bestSwapJ = -1
-							}
-						}
-						for _, m := range grp { assignment[m] = gRoom }
-					}
-
-					for gj := gi + 1; gj < len(uniqueGroups); gj++ {
-						grp2 := groups[uniqueGroups[gj]]
-						g2Room := assignment[grp2[0]]
-						if gRoom == g2Room { continue }
-						newGRoom := roomCount(assignment, gRoom) - len(grp) + len(grp2)
-						newG2Room := roomCount(assignment, g2Room) - len(grp2) + len(grp)
-						if newGRoom > roomSize || newG2Room > roomSize { continue }
-						for _, m := range grp { assignment[m] = g2Room }
-						for _, m := range grp2 { assignment[m] = gRoom }
-						if feasible(assignment) {
-							delta := score(assignment) - currentScore
-							if delta > bestDelta {
-								bestDelta = delta
-								bestMove = gi
-								bestTarget = -1
-								bestSwapJ = gj
-							}
-						}
-						for _, m := range grp { assignment[m] = gRoom }
-						for _, m := range grp2 { assignment[m] = g2Room }
-					}
-				}
-
-				if bestDelta <= 0 { break }
-
-				grp := groups[uniqueGroups[bestMove]]
-				gRoom := assignment[grp[0]]
-				if bestSwapJ < 0 {
-					for _, m := range grp { assignment[m] = bestTarget }
-				} else {
-					grp2 := groups[uniqueGroups[bestSwapJ]]
-					g2Room := assignment[grp2[0]]
-					for _, m := range grp { assignment[m] = g2Room }
-					for _, m := range grp2 { assignment[m] = gRoom }
-				}
-				currentScore += bestDelta
-			}
-			return currentScore
-		}
-
-		randomPlacement := func() bool {
-			perm := rand.Perm(len(groupList))
-			for i := range roomCap { roomCap[i] = roomSize }
-			for _, pi := range perm {
-				grp := groupList[pi]
-				placed := false
-				order := rand.Perm(numRooms)
-				for _, room := range order {
-					if roomCap[room] < len(grp) { continue }
-					valid := true
-					for _, member := range grp {
-						for p := range mustApart {
-							partner := -1
-							if p[0] == member { partner = p[1] }
-							if p[1] == member { partner = p[0] }
-							if partner >= 0 && assignment[partner] == room {
-								valid = false
-								break
-							}
-						}
-						if !valid { break }
-					}
-					if !valid { continue }
-					for _, member := range grp { assignment[member] = room }
-					roomCap[room] -= len(grp)
-					placed = true
-					break
-				}
-				if !placed { return false }
-			}
-			return true
-		}
-
-		perturb := func(src []int, count int) {
-			copy(assignment, src)
-			indices := rand.Perm(len(uniqueGroups))
-			count = min(count, len(indices))
-			for _, gi := range indices[:count] {
-				grp := groups[uniqueGroups[gi]]
-				oldRoom := assignment[grp[0]]
-				rooms := rand.Perm(numRooms)
-				for _, room := range rooms {
-					if room == oldRoom { continue }
-					if roomCount(assignment, room)+len(grp) > roomSize { continue }
-					for _, m := range grp { assignment[m] = room }
-					if feasible(assignment) { break }
-					for _, m := range grp { assignment[m] = oldRoom }
-				}
-			}
-		}
-
-		copy(assignment, initialAssignment)
-		addSolution(assignment, hillClimb(assignment))
-
-		for range 30 {
-			if randomPlacement() {
-				addSolution(assignment, hillClimb(assignment))
-			}
-		}
-
-		for range 200 {
-			src := bestSolutions[rand.Intn(len(bestSolutions))]
-			perturb(src, 2+rand.Intn(3))
-			addSolution(assignment, hillClimb(assignment))
-		}
 
 		type roomMember struct {
 			ID   int64  `json:"id"`
@@ -1559,9 +1237,9 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			Score int            `json:"score"`
 		}
 		var results []solutionResult
-		for _, sol := range bestSolutions {
+		for _, sol := range solutions {
 			roomMap := map[int][]roomMember{}
-			for i, room := range sol {
+			for i, room := range sol.Assignment {
 				sid := studentIDs[i]
 				roomMap[room] = append(roomMap[room], roomMember{ID: sid, Name: studentName[sid]})
 			}
@@ -1573,7 +1251,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 				}
 			}
 			slices.SortFunc(rooms, func(a, b []roomMember) int { return strings.Compare(a[0].Name, b[0].Name) })
-			results = append(results, solutionResult{Rooms: rooms, Score: bestScore})
+			results = append(results, solutionResult{Rooms: rooms, Score: sol.Score})
 		}
 		slices.SortFunc(results, func(a, b solutionResult) int {
 			for i := range min(len(a.Rooms), len(b.Rooms)) {
