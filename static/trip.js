@@ -423,97 +423,190 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
         const container = document.getElementById('solver-results');
         container.innerHTML = '';
 
-        const renderSolution = (sol, parent, lockedRooms) => {
-            for (let i = 0; i < sol.rooms.length; i++) {
-                const key = sol.rooms[i].map(m => m.id).sort((a, b) => a - b).join(',');
-                const card = document.createElement('wa-card');
-                const locked = lockedRooms.has(key);
-                card.className = 'room-card' + (locked ? ' room-locked' : '');
-                if (locked) card.setAttribute('appearance', 'outlined');
-                const label = document.createElement('div');
-                label.className = 'room-label';
-                label.textContent = 'Room ' + (i + 1);
-                card.appendChild(label);
-                const tags = document.createElement('div');
-                tags.className = 'tags';
-                const roomIDs = sol.rooms[i].map(m => m.id);
-                const violations = [];
-                for (const a of sol.rooms[i]) {
-                    for (const b of sol.rooms[i]) {
-                        if (a.id === b.id) continue;
-                        const eff = lastOveralls[a.id]?.[b.id];
-                        if (eff && eff.kind === 'prefer_not') {
-                            violations.push({ from: a.name, to: b.name });
-                        }
+        const renderRoomCard = (room, parent, roomNum, locked) => {
+            const card = document.createElement('wa-card');
+            card.className = 'room-card' + (locked ? ' room-locked' : '');
+            if (locked) card.setAttribute('appearance', 'outlined');
+            const label = document.createElement('div');
+            label.className = 'room-label';
+            label.textContent = 'Room ' + roomNum;
+            card.appendChild(label);
+            const tags = document.createElement('div');
+            tags.className = 'tags';
+            const roomIDs = room.map(m => m.id);
+            const violations = [];
+            for (const a of room) {
+                for (const b of room) {
+                    if (a.id === b.id) continue;
+                    const eff = lastOveralls[a.id]?.[b.id];
+                    if (eff && eff.kind === 'prefer_not') {
+                        violations.push({ from: a.name, to: b.name });
                     }
                 }
-                for (const member of sol.rooms[i]) {
-                    const tag = document.createElement('wa-tag');
-                    tag.size = 'small';
-                    tag.style.cursor = 'pointer';
-                    const hasViolation = violations.some(v => v.from === member.name || v.to === member.name);
-                    const hasPrefers = Object.values(lastOveralls[member.id] || {}).some(e => e.kind === 'prefer');
-                    const gotPrefer = hasPrefers && roomIDs.some(rid => rid !== member.id && lastOveralls[member.id]?.[rid]?.kind === 'prefer');
-                    if (hasViolation) tag.variant = 'danger';
-                    else if (hasPrefers && !gotPrefer) tag.variant = 'warning';
-                    else tag.variant = 'brand';
-                    tag.textContent = member.name;
-                    tag.addEventListener('click', () => {
-                        const studentCard = document.querySelector('[data-student-id="' + member.id + '"]');
-                        if (!studentCard) return;
-                        const cDet = [...studentCard.querySelectorAll('wa-details')].find(d => d.summary === 'Constraints');
-                        if (cDet) cDet.open = true;
-                        studentCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    });
-                    tags.appendChild(tag);
-                }
-                if (violations.length > 0) {
-                    const warn = document.createElement('div');
-                    warn.style.fontSize = '0.75rem';
-                    warn.style.color = 'var(--wa-color-warning-50)';
-                    warn.textContent = violations.map(v => v.from + ' \u2192 ' + v.to).join(', ');
-                    card.appendChild(tags);
-                    card.appendChild(warn);
-                } else {
-                    card.appendChild(tags);
-                }
-                parent.appendChild(card);
             }
+            for (const member of room) {
+                const tag = document.createElement('wa-tag');
+                tag.size = 'small';
+                tag.style.cursor = 'pointer';
+                const hasViolation = violations.some(v => v.from === member.name || v.to === member.name);
+                const hasPrefers = Object.values(lastOveralls[member.id] || {}).some(e => e.kind === 'prefer');
+                const gotPrefer = hasPrefers && roomIDs.some(rid => rid !== member.id && lastOveralls[member.id]?.[rid]?.kind === 'prefer');
+                if (hasViolation) tag.variant = 'danger';
+                else if (hasPrefers && !gotPrefer) tag.variant = 'warning';
+                else tag.variant = 'brand';
+                tag.textContent = member.name;
+                tag.addEventListener('click', () => {
+                    const studentCard = document.querySelector('[data-student-id="' + member.id + '"]');
+                    if (!studentCard) return;
+                    const cDet = [...studentCard.querySelectorAll('wa-details')].find(d => d.summary === 'Constraints');
+                    if (cDet) cDet.open = true;
+                    studentCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+                tags.appendChild(tag);
+            }
+            if (violations.length > 0) {
+                const warn = document.createElement('div');
+                warn.style.fontSize = '0.75rem';
+                warn.style.color = 'var(--wa-color-warning-50)';
+                warn.textContent = violations.map(v => v.from + ' \u2192 ' + v.to).join(', ');
+                card.appendChild(tags);
+                card.appendChild(warn);
+            } else {
+                card.appendChild(tags);
+            }
+            parent.appendChild(card);
         };
 
         const solutions = result.solutions;
-        let lockedRooms = new Set();
-        if (solutions.length > 1) {
-            const roomKey = (room) => room.map(m => m.id).sort((a, b) => a - b).join(',');
-            const sets = solutions.map(sol => new Set(sol.rooms.map(roomKey)));
-            lockedRooms = new Set([...sets[0]].filter(k => sets.every(s => s.has(k))));
-        }
+        const roomKey = (room) => room.map(m => m.id).sort((a, b) => a - b).join(',');
+        let swapGroups = [];
+
         if (solutions.length === 1) {
-            renderSolution(solutions[0], container, lockedRooms);
+            let roomNum = 1;
+            for (const room of solutions[0].rooms) {
+                renderRoomCard(room, container, roomNum++, false);
+            }
         } else if (solutions.length > 1) {
-            const optionLabel = (i) => {
-                const a = 'A'.charCodeAt(0);
-                return i < 26 ? String.fromCharCode(a + i) : String.fromCharCode(a + Math.floor(i / 26) - 1) + String.fromCharCode(a + (i % 26));
+            const sets = solutions.map(sol => new Set(sol.rooms.map(roomKey)));
+            const lockedKeys = new Set([...sets[0]].filter(k => sets.every(s => s.has(k))));
+
+            const lockedRoomsList = solutions[0].rooms.filter(r => lockedKeys.has(roomKey(r)));
+
+            const uf = {};
+            const ufFind = (x) => {
+                if (uf[x] === undefined) uf[x] = x;
+                if (uf[x] !== x) uf[x] = ufFind(uf[x]);
+                return uf[x];
             };
-            const tabGroup = document.createElement('wa-tab-group');
-            for (let si = 0; si < solutions.length; si++) {
-                const tab = document.createElement('wa-tab');
-                tab.slot = 'nav';
-                tab.panel = 'sol-' + si;
-                tab.textContent = optionLabel(si);
-                tabGroup.appendChild(tab);
+            const ufUnion = (a, b) => {
+                const ra = ufFind(a), rb = ufFind(b);
+                if (ra !== rb) uf[ra] = rb;
+            };
+
+            for (const sol of solutions) {
+                for (const room of sol.rooms) {
+                    if (lockedKeys.has(roomKey(room))) continue;
+                    const ids = room.map(m => m.id);
+                    for (let i = 1; i < ids.length; i++) {
+                        ufUnion(ids[0], ids[i]);
+                    }
+                }
             }
-            for (let si = 0; si < solutions.length; si++) {
-                const panel = document.createElement('wa-tab-panel');
-                panel.name = 'sol-' + si;
-                renderSolution(solutions[si], panel, lockedRooms);
-                tabGroup.appendChild(panel);
+
+            const components = {};
+            for (const id of Object.keys(uf)) {
+                const root = ufFind(parseInt(id));
+                if (!components[root]) components[root] = new Set();
+                components[root].add(parseInt(id));
             }
-            container.appendChild(tabGroup);
+
+            for (const studentIDs of Object.values(components)) {
+                const configs = [];
+                const configKeySet = new Set();
+                for (const sol of solutions) {
+                    const groupRooms = sol.rooms.filter(r => r.some(m => studentIDs.has(m.id)));
+                    groupRooms.sort((a, b) => roomKey(a).localeCompare(roomKey(b)));
+                    const ck = groupRooms.map(r => roomKey(r)).join('|');
+                    if (!configKeySet.has(ck)) {
+                        configKeySet.add(ck);
+                        configs.push(groupRooms);
+                    }
+                }
+                swapGroups.push({ studentIDs, configs });
+            }
+            swapGroups.sort((a, b) => Math.min(...a.studentIDs) - Math.min(...b.studentIDs));
+
+            let roomNum = 1;
+            for (const room of lockedRoomsList) {
+                renderRoomCard(room, container, roomNum++, true);
+            }
+
+            for (const group of swapGroups) {
+                const section = document.createElement('div');
+                section.className = 'swap-group';
+
+                let current = 0;
+                const roomsDiv = document.createElement('div');
+                const baseRoomNum = roomNum;
+
+                const render = () => {
+                    roomsDiv.innerHTML = '';
+                    let rn = baseRoomNum;
+                    for (const room of group.configs[current]) {
+                        renderRoomCard(room, roomsDiv, rn++, false);
+                    }
+                };
+
+                const nav = document.createElement('div');
+                nav.className = 'swap-group-nav';
+                const prevBtn = document.createElement('wa-button');
+                prevBtn.size = 'small';
+                prevBtn.variant = 'text';
+                prevBtn.textContent = '\u25c0';
+                const lbl = document.createElement('span');
+                lbl.className = 'swap-group-label';
+                lbl.textContent = '1 of ' + group.configs.length;
+                const nextBtn = document.createElement('wa-button');
+                nextBtn.size = 'small';
+                nextBtn.variant = 'text';
+                nextBtn.textContent = '\u25b6';
+
+                prevBtn.addEventListener('click', () => {
+                    current = (current - 1 + group.configs.length) % group.configs.length;
+                    lbl.textContent = (current + 1) + ' of ' + group.configs.length;
+                    render();
+                });
+                nextBtn.addEventListener('click', () => {
+                    current = (current + 1) % group.configs.length;
+                    lbl.textContent = (current + 1) + ' of ' + group.configs.length;
+                    render();
+                });
+
+                nav.appendChild(prevBtn);
+                nav.appendChild(lbl);
+                nav.appendChild(nextBtn);
+                section.appendChild(nav);
+                section.appendChild(roomsDiv);
+                container.appendChild(section);
+
+                render();
+                roomNum += group.configs[0].length;
+            }
         }
+
         const scoreDiv = document.createElement('div');
         scoreDiv.className = 'solver-score';
-        scoreDiv.textContent = 'Score: ' + (solutions[0]?.score ?? 0) + (solutions.length > 1 ? ' (' + solutions.length + ' options)' : '');
+        let scoreText = 'Score: ' + (solutions[0]?.score ?? 0);
+        if (swapGroups.length > 0) {
+            const counts = swapGroups.map(g => g.configs.length);
+            const total = counts.reduce((a, b) => a * b, 1);
+            if (swapGroups.length === 1) {
+                scoreText += ' (' + total + ' options)';
+            } else {
+                scoreText += ' (' + counts.join(' \u00d7 ') + ' = ' + total + ' combinations)';
+            }
+        }
+        scoreDiv.textContent = scoreText;
         container.appendChild(scoreDiv);
     } catch (e) {
         const container = document.getElementById('solver-results');
