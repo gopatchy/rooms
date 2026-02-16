@@ -142,6 +142,30 @@ async function loadStudents() {
 
         const addRow = document.createElement('div');
         addRow.className = 'constraint-add';
+        const levelKinds = {
+            student: ['prefer', 'prefer_not'],
+            parent: ['must_not'],
+            admin: ['must', 'prefer', 'prefer_not', 'must_not']
+        };
+        const levelSelect = document.createElement('select');
+        for (const level of ['student', 'parent', 'admin']) {
+            const opt = document.createElement('option');
+            opt.value = level;
+            opt.textContent = level.charAt(0).toUpperCase() + level.slice(1);
+            levelSelect.appendChild(opt);
+        }
+        const kindSelect = document.createElement('select');
+        const updateKinds = () => {
+            kindSelect.innerHTML = '';
+            for (const kind of levelKinds[levelSelect.value]) {
+                const opt = document.createElement('option');
+                opt.value = kind;
+                opt.textContent = kindLabels[kind];
+                kindSelect.appendChild(opt);
+            }
+        };
+        updateKinds();
+        levelSelect.addEventListener('change', updateKinds);
         const studentSelect = document.createElement('select');
         const defaultOpt = document.createElement('option');
         defaultOpt.value = '';
@@ -153,20 +177,6 @@ async function loadStudents() {
             opt.value = other.id;
             opt.textContent = other.name;
             studentSelect.appendChild(opt);
-        }
-        const kindSelect = document.createElement('select');
-        for (const kind of ['must', 'prefer', 'prefer_not', 'must_not']) {
-            const opt = document.createElement('option');
-            opt.value = kind;
-            opt.textContent = kindLabels[kind];
-            kindSelect.appendChild(opt);
-        }
-        const levelSelect = document.createElement('select');
-        for (const level of ['student', 'parent', 'admin']) {
-            const opt = document.createElement('option');
-            opt.value = level;
-            opt.textContent = level.charAt(0).toUpperCase() + level.slice(1);
-            levelSelect.appendChild(opt);
         }
         const cAddBtn = document.createElement('button');
         cAddBtn.className = 'input-action';
@@ -182,9 +192,9 @@ async function loadStudents() {
             });
             loadStudents();
         });
-        addRow.appendChild(studentSelect);
-        addRow.appendChild(kindSelect);
         addRow.appendChild(levelSelect);
+        addRow.appendChild(kindSelect);
+        addRow.appendChild(studentSelect);
         addRow.appendChild(cAddBtn);
         cDetails.appendChild(addRow);
 

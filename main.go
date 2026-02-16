@@ -638,6 +638,22 @@ func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "students must be different", http.StatusBadRequest)
 			return
 		}
+		switch body.Level {
+		case "student":
+			if body.Kind != "prefer" && body.Kind != "prefer_not" {
+				http.Error(w, "students may only use prefer or prefer not", http.StatusBadRequest)
+				return
+			}
+		case "parent":
+			if body.Kind != "must_not" {
+				http.Error(w, "parents may only use must not", http.StatusBadRequest)
+				return
+			}
+		case "admin":
+		default:
+			http.Error(w, "invalid level", http.StatusBadRequest)
+			return
+		}
 		a, b := body.StudentAID, body.StudentBID
 		if a > b {
 			a, b = b, a
