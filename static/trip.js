@@ -454,6 +454,7 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
                     const gotPrefer = hasPrefers && roomIDs.some(rid => rid !== member.id && lastOveralls[member.id]?.[rid]?.kind === 'prefer');
                     if (hasViolation) tag.variant = 'danger';
                     else if (hasPrefers && !gotPrefer) tag.variant = 'warning';
+                    else tag.variant = 'brand';
                     tag.textContent = member.name;
                     tag.addEventListener('click', () => {
                         const studentCard = document.querySelector('[data-student-id="' + member.id + '"]');
