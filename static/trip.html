@@ -72,6 +72,7 @@
         .room-card { margin-bottom: 0.3rem; }
         .room-label { font-weight: bold; font-size: 0.8rem; margin-bottom: 0.2rem; }
         .solver-score { font-size: 0.8rem; margin-top: 0.3rem; color: var(--wa-color-neutral-500); }
+        .divider { border: none; border-top: 1px solid #909090; margin: 0.75rem 0; }
     </style>
 </head>
 <body>
@@ -89,6 +90,7 @@
             <label>Prefer Not cost: <input id="pn-multiple" type="number" min="1"></label>
             <label>No Prefer cost: <input id="np-cost" type="number" min="0"></label>
         </div>
+        <hr class="divider">
         <div id="conflicts"></div>
         <div id="mismatches"></div>
         <div id="hard-conflicts"></div>
@@ -96,6 +98,7 @@
             <wa-button id="solve-btn" size="small">Solve Rooms</wa-button>
             <div id="solver-results"></div>
         </div>
+        <hr class="divider">
         <div id="students"></div>
         <wa-details summary="Add Student">
             <div class="add-form">
