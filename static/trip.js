@@ -76,18 +76,9 @@ async function loadStudents() {
     };
 
     const allOveralls = {};
-    for (const s of students) {
-        const myC = constraints.filter(c => c.student_a_id === s.id);
-        const byPeer = {};
-        for (const c of myC) {
-            if (!byPeer[c.student_b_id]) byPeer[c.student_b_id] = {};
-            byPeer[c.student_b_id][c.level] = c;
-        }
-        allOveralls[s.id] = {};
-        for (const [peerId, levels] of Object.entries(byPeer)) {
-            const eff = levels.admin || levels.parent || levels.student;
-            if (eff) allOveralls[s.id][peerId] = eff;
-        }
+    for (const s of students) allOveralls[s.id] = {};
+    for (const o of constraintData.overalls) {
+        allOveralls[o.student_a_id][o.student_b_id] = o;
     }
     lastOveralls = allOveralls;
 

@@ -788,6 +788,14 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 			Negatives []levelKind `json:"negatives"`
 		}
 		var overrides []overrideEntry
+		type overallEntry struct {
+			StudentAID   int64  `json:"student_a_id"`
+			StudentBID   int64  `json:"student_b_id"`
+			StudentBName string `json:"student_b_name"`
+			Kind         string `json:"kind"`
+			Level        string `json:"level"`
+		}
+		var overalls []overallEntry
 
 		if role == "admin" {
 			type pairKey struct{ a, b int64 }
@@ -798,7 +806,22 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 			}
 			isPositive := func(kind string) bool { return kind == "must" || kind == "prefer" }
 			kindLabel := map[string]string{"must": "Must", "prefer": "Prefer", "prefer_not": "Prefer Not", "must_not": "Must Not"}
+			levelPriority := map[string]int{"admin": 0, "parent": 1, "student": 2}
 			for _, idxs := range pairGroups {
+				bestIdx := idxs[0]
+				for _, i := range idxs[1:] {
+					if levelPriority[constraints[i].Level] < levelPriority[constraints[bestIdx].Level] {
+						bestIdx = i
+					}
+				}
+				overalls = append(overalls, overallEntry{
+					StudentAID:   constraints[bestIdx].StudentAID,
+					StudentBID:   constraints[bestIdx].StudentBID,
+					StudentBName: constraints[bestIdx].StudentBName,
+					Kind:         constraints[bestIdx].Kind,
+					Level:        constraints[bestIdx].Level,
+				})
+
 				var posIdx, negIdx []int
 				for _, i := range idxs {
 					if isPositive(constraints[i].Kind) {
@@ -841,9 +864,12 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 		if overrides == nil {
 			overrides = []overrideEntry{}
 		}
+		if overalls == nil {
+			overalls = []overallEntry{}
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"constraints": constraints, "overrides": overrides})
+		json.NewEncoder(w).Encode(map[string]any{"constraints": constraints, "overrides": overrides, "overalls": overalls})
 	}
 }
 
