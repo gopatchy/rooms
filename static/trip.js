@@ -646,6 +646,8 @@ async function renderMemberView(me) {
         ? ['', 'prefer', 'prefer_not']
         : ['', 'must_not'];
 
+    const pendingSelects = [];
+
     for (const myStudent of me.students) {
         const card = document.createElement('wa-card');
         const label = document.createElement('span');
@@ -678,8 +680,7 @@ async function renderMemberView(me) {
                 select.appendChild(opt);
             }
             const existing = myConstraints[other.id];
-            const initVal = existing ? existing.kind : '';
-            select.updateComplete.then(() => { select.value = initVal; });
+            pendingSelects.push({ select, value: existing ? existing.kind : '' });
 
             select.addEventListener('change', async (e) => {
                 const val = e.target.value;
@@ -703,5 +704,11 @@ async function renderMemberView(me) {
             card.appendChild(row);
         }
         container.appendChild(card);
+    }
+
+    await customElements.whenDefined('wa-select');
+    for (const { select, value } of pendingSelects) {
+        await select.updateComplete;
+        select.value = value;
     }
 }
