@@ -617,6 +617,8 @@ async function renderMemberView(me) {
             }
         }
 
+        const rows = document.createElement('div');
+        rows.className = 'pref-rows';
         for (const other of students) {
             if (myStudentIDs.has(other.id)) continue;
             const row = document.createElement('div');
@@ -658,8 +660,9 @@ async function renderMemberView(me) {
                 }
             });
             row.appendChild(group);
-            card.appendChild(row);
+            rows.appendChild(row);
         }
+        card.appendChild(rows);
         container.appendChild(card);
     }
 
