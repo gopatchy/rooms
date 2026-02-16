@@ -30,13 +30,41 @@ if (me.role !== 'admin') {
 await (async () => {
 
 document.getElementById('admin-view').style.display = 'block';
-document.getElementById('room-size').value = trip.room_size;
 document.getElementById('pn-multiple').value = trip.prefer_not_multiple;
 document.getElementById('np-cost').value = trip.no_prefer_cost;
-document.getElementById('room-size').addEventListener('change', async () => {
-    const size = parseInt(document.getElementById('room-size').value);
-    if (size >= 1) await api('PATCH', '/api/trips/' + tripID, { room_size: size });
+
+let roomGroups = [];
+
+async function loadRoomGroups() {
+    roomGroups = await api('GET', '/api/trips/' + tripID + '/room-groups');
+    const tags = document.getElementById('room-group-tags');
+    tags.innerHTML = '';
+    for (const rg of roomGroups) {
+        const tag = document.createElement('wa-tag');
+        tag.size = 'small';
+        tag.setAttribute('with-remove', '');
+        tag.textContent = rg.count + ' \u00d7 ' + rg.size + '-person';
+        tag.addEventListener('wa-remove', async () => {
+            await api('DELETE', '/api/trips/' + tripID + '/room-groups/' + rg.id);
+            loadRoomGroups();
+        });
+        tags.appendChild(tag);
+    }
+}
+await loadRoomGroups();
+
+document.getElementById('add-rg-btn').addEventListener('click', async () => {
+    const sizeInput = document.getElementById('new-rg-size');
+    const countInput = document.getElementById('new-rg-count');
+    const size = parseInt((sizeInput.value || '').trim());
+    const count = parseInt((countInput.value || '').trim());
+    if (!size || size < 1 || !count || count < 1) return;
+    await api('POST', '/api/trips/' + tripID + '/room-groups', { size, count });
+    sizeInput.value = '';
+    countInput.value = '';
+    loadRoomGroups();
 });
+
 document.getElementById('pn-multiple').addEventListener('change', async () => {
     const val = parseInt(document.getElementById('pn-multiple').value);
     if (val >= 1) await api('PATCH', '/api/trips/' + tripID, { prefer_not_multiple: val });
@@ -158,7 +186,8 @@ async function loadStudents() {
             const div = document.createElement('div');
             div.className = 'conflict-row';
             div.appendChild(kindSpan('must'));
-            div.appendChild(document.createTextNode(' group too large (' + members.length + ' for room size ' + trip.room_size + '): ' + members.join(', ')));
+            const maxSize = roomGroups.length > 0 ? Math.max(...roomGroups.map(g => g.size)) : 0;
+            div.appendChild(document.createTextNode(' group too large (' + members.length + ' for max room size ' + maxSize + '): ' + members.join(', ')));
             det.appendChild(div);
         }
         hardConflictsEl.appendChild(det);

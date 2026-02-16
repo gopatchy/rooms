@@ -95,7 +95,15 @@
         <h2 id="trip-name"></h2>
         <div id="admin-view" style="display: none;">
             <div id="trip-settings">
-                <label>Students per room: <input id="room-size" type="number" min="1"></label>
+                <div id="room-groups">
+                    <div class="tags" id="room-group-tags"></div>
+                    <div style="display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap;">
+                        <wa-input id="new-rg-count" type="number" min="1" placeholder="Count" size="small" style="width: 5rem;"></wa-input>
+                        <span>rooms of</span>
+                        <wa-input id="new-rg-size" type="number" min="1" placeholder="Size" size="small" style="width: 5rem;"></wa-input>
+                        <wa-button id="add-rg-btn" size="small">Add</wa-button>
+                    </div>
+                </div>
                 <label>Prefer Not cost: <input id="pn-multiple" type="number" min="1"></label>
                 <label>No Prefer cost: <input id="np-cost" type="number" min="0"></label>
             </div>

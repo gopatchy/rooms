@@ -57,9 +57,9 @@ func normalizeKey(a []int) string {
 }
 
 type solverState struct {
-	n          int
-	roomSize   int
-	numRooms   int
+	n         int
+	roomSizes []int
+	numRooms  int
 	pnMultiple int
 	npCost     int
 
@@ -77,11 +77,11 @@ type solverState struct {
 	mustApartFor       [][]int
 }
 
-func newSolverState(n, roomSize, pnMultiple, npCost int, constraints []Constraint) *solverState {
+func newSolverState(n int, roomSizes []int, pnMultiple, npCost int, constraints []Constraint) *solverState {
 	s := &solverState{
 		n:          n,
-		roomSize:   roomSize,
-		numRooms:   (n + roomSize - 1) / roomSize,
+		roomSizes:  roomSizes,
+		numRooms:   len(roomSizes),
 		pnMultiple: pnMultiple,
 		npCost:     npCost,
 		constraints: constraints,
@@ -235,7 +235,6 @@ func (s *solverState) feasibleForGroup(assignment []int, groupRoot int, room int
 
 func (s *solverState) fastHillClimb(assignment []int) int {
 	n := s.n
-	roomSize := s.roomSize
 	numRooms := s.numRooms
 
 	roomCounts := make([]int, numRooms)
@@ -386,7 +385,7 @@ func (s *solverState) fastHillClimb(assignment []int) int {
 				if room == gRoom {
 					continue
 				}
-				if roomCounts[room]+len(grp) > roomSize {
+				if roomCounts[room]+len(grp) > s.roomSizes[room] {
 					continue
 				}
 				if !s.feasibleForGroup(assignment, gRoot, room) {
@@ -410,7 +409,7 @@ func (s *solverState) fastHillClimb(assignment []int) int {
 				}
 				newGRoom := roomCounts[gRoom] - len(grp) + len(grp2)
 				newG2Room := roomCounts[g2Room] - len(grp2) + len(grp)
-				if newGRoom > roomSize || newG2Room > roomSize {
+				if newGRoom > s.roomSizes[gRoom] || newG2Room > s.roomSizes[g2Room] {
 					continue
 				}
 				if !s.feasibleForGroup(assignment, gRoot, g2Room) {
@@ -456,9 +455,7 @@ func (s *solverState) fastHillClimb(assignment []int) int {
 
 func (s *solverState) initialPlacement(assignment []int) bool {
 	roomCap := make([]int, s.numRooms)
-	for i := range roomCap {
-		roomCap[i] = s.roomSize
-	}
+	copy(roomCap, s.roomSizes)
 
 	var placeGroups func(gi int) bool
 	placeGroups = func(gi int) bool {
@@ -517,9 +514,7 @@ func (s *solverState) initialPlacement(assignment []int) bool {
 
 func (s *solverState) randomPlacement(assignment []int, rng *rand.Rand) bool {
 	roomCap := make([]int, s.numRooms)
-	for i := range roomCap {
-		roomCap[i] = s.roomSize
-	}
+	copy(roomCap, s.roomSizes)
 	perm := rng.Perm(len(s.groupList))
 	for _, pi := range perm {
 		grp := s.groupList[pi]
@@ -597,12 +592,12 @@ func (t *solutionTracker) add(a []int, s int) {
 	}
 }
 
-func SolveFast(n, roomSize, pnMultiple, npCost int, constraints []Constraint, params Params, rng *rand.Rand) []Solution {
+func SolveFast(n int, roomSizes []int, pnMultiple, npCost int, constraints []Constraint, params Params, rng *rand.Rand) []Solution {
 	if n == 0 {
 		return nil
 	}
 
-	st := newSolverState(n, roomSize, pnMultiple, npCost, constraints)
+	st := newSolverState(n, roomSizes, pnMultiple, npCost, constraints)
 	if st.hasHardConflict() {
 		return nil
 	}
@@ -637,8 +632,8 @@ func SolveFast(n, roomSize, pnMultiple, npCost int, constraints []Constraint, pa
 		for _, room := range a {
 			rc[room]++
 		}
-		for _, cnt := range rc {
-			if cnt > roomSize {
+		for room, cnt := range rc {
+			if cnt > st.roomSizes[room] {
 				return false
 			}
 		}
@@ -657,7 +652,7 @@ func SolveFast(n, roomSize, pnMultiple, npCost int, constraints []Constraint, pa
 				if room == oldRoom {
 					continue
 				}
-				if roomCount(assignment, room)+len(grp) > roomSize {
+				if roomCount(assignment, room)+len(grp) > st.roomSizes[room] {
 					continue
 				}
 				for _, m := range grp {

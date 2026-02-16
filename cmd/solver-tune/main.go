@@ -15,10 +15,15 @@ import (
 	"rooms/solver"
 )
 
+type roomGroupData struct {
+	Size  int `json:"size"`
+	Count int `json:"count"`
+}
+
 type tripData struct {
-	RoomSize          int `json:"room_size"`
-	PreferNotMultiple int `json:"prefer_not_multiple"`
-	NoPreferCost      int `json:"no_prefer_cost"`
+	PreferNotMultiple int             `json:"prefer_not_multiple"`
+	NoPreferCost      int             `json:"no_prefer_cost"`
+	RoomGroups        []roomGroupData `json:"room_groups"`
 }
 
 type studentData struct {
@@ -189,7 +194,18 @@ func main() {
 		})
 	}
 
-	fmt.Printf("Students: %d, Room size: %d, Constraints: %d\n", n, trip.RoomSize, len(constraints))
+	var roomSizes []int
+	for _, rg := range trip.RoomGroups {
+		for range rg.Count {
+			roomSizes = append(roomSizes, rg.Size)
+		}
+	}
+	if len(roomSizes) == 0 {
+		fmt.Fprintf(os.Stderr, "no room_groups in trip data\n")
+		os.Exit(1)
+	}
+
+	fmt.Printf("Students: %d, Room sizes: %v, Constraints: %d\n", n, roomSizes, len(constraints))
 	fmt.Printf("Prefer Not multiple: %d, No Prefer cost: %d\n", trip.PreferNotMultiple, trip.NoPreferCost)
 	fmt.Printf("Runs per config: %d\n\n", *runs)
 
@@ -207,7 +223,7 @@ func main() {
 			for run := range *runs {
 				rng := rand.New(rand.NewSource(int64(run * 31337)))
 				start := time.Now()
-				sols := solver.SolveFast(n, trip.RoomSize, trip.PreferNotMultiple, trip.NoPreferCost, constraints, params, rng)
+				sols := solver.SolveFast(n, roomSizes, trip.PreferNotMultiple, trip.NoPreferCost, constraints, params, rng)
 				elapsed := time.Since(start)
 				if len(sols) > 0 {
 					var assignments [][]int
