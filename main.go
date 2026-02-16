@@ -808,6 +808,13 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 			KindB string `json:"kind_b"`
 		}
 		var mismatches []mismatchEntry
+		type conflictLink struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+			Kind string `json:"kind"`
+		}
+		var hardConflicts [][]conflictLink
+		var oversizedGroups [][]string
 
 		if role == "admin" {
 			type pairKey struct{ a, b int64 }
@@ -890,9 +897,121 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 					})
 				}
 			}
+
+			sRows, err := db.Query("SELECT id, name FROM students WHERE trip_id = $1", tripID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer sRows.Close()
+			studentName := map[int64]string{}
+			var studentIDs []int64
+			for sRows.Next() {
+				var id int64
+				var name string
+				if err := sRows.Scan(&id, &name); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				studentName[id] = name
+				studentIDs = append(studentIDs, id)
+			}
+
+			mustAdj := map[int64][]int64{}
+			ufParent := map[int64]int64{}
+			for _, id := range studentIDs {
+				ufParent[id] = id
+			}
+			var ufFind func(int64) int64
+			ufFind = func(x int64) int64 {
+				if ufParent[x] != x {
+					ufParent[x] = ufFind(ufParent[x])
+				}
+				return ufParent[x]
+			}
+			for _, o := range overalls {
+				if o.Kind == "must" {
+					mustAdj[o.StudentAID] = append(mustAdj[o.StudentAID], o.StudentBID)
+					mustAdj[o.StudentBID] = append(mustAdj[o.StudentBID], o.StudentAID)
+					ra, rb := ufFind(o.StudentAID), ufFind(o.StudentBID)
+					if ra != rb {
+						ufParent[ra] = rb
+					}
+				}
+			}
+
+			findMustPath := func(from, to int64) []int64 {
+				if from == to {
+					return []int64{from}
+				}
+				visited := map[int64]bool{from: true}
+				type qEntry struct{ path []int64 }
+				queue := []qEntry{{[]int64{from}}}
+				for len(queue) > 0 {
+					entry := queue[0]
+					queue = queue[1:]
+					curr := entry.path[len(entry.path)-1]
+					for _, next := range mustAdj[curr] {
+						if next == to {
+							return append(entry.path, next)
+						}
+						if !visited[next] {
+							visited[next] = true
+							p := make([]int64, len(entry.path)+1)
+							copy(p, entry.path)
+							p[len(entry.path)] = next
+							queue = append(queue, qEntry{p})
+						}
+					}
+				}
+				return nil
+			}
+
+			for _, o := range overalls {
+				if o.Kind != "must_not" {
+					continue
+				}
+				if ufFind(o.StudentAID) != ufFind(o.StudentBID) {
+					continue
+				}
+				path := findMustPath(o.StudentBID, o.StudentAID)
+				if path == nil {
+					continue
+				}
+				var chain []conflictLink
+				for i := range len(path) - 1 {
+					x, y := path[i], path[i+1]
+					if overallMap[pairKey{x, y}].Kind == "must" {
+						chain = append(chain, conflictLink{studentName[x], studentName[y], "must"})
+					} else {
+						chain = append(chain, conflictLink{studentName[y], studentName[x], "must"})
+					}
+				}
+				chain = append(chain, conflictLink{studentName[o.StudentAID], studentName[o.StudentBID], "must_not"})
+				hardConflicts = append(hardConflicts, chain)
+			}
+
+			var roomSize int
+			db.QueryRow("SELECT room_size FROM trips WHERE id = $1", tripID).Scan(&roomSize)
+			mustGroups := map[int64][]string{}
+			for _, id := range studentIDs {
+				root := ufFind(id)
+				mustGroups[root] = append(mustGroups[root], studentName[id])
+			}
+			for _, members := range mustGroups {
+				if len(members) > roomSize {
+					oversizedGroups = append(oversizedGroups, members)
+				}
+			}
 		}
 		if mismatches == nil {
 			mismatches = []mismatchEntry{}
+		}
+		if hardConflicts == nil {
+			hardConflicts = [][]conflictLink{}
+		}
+		if oversizedGroups == nil {
+			oversizedGroups = [][]string{}
 		}
 		if overrides == nil {
 			overrides = []overrideEntry{}
@@ -902,7 +1021,7 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"constraints": constraints, "overrides": overrides, "overalls": overalls, "mismatches": mismatches})
+		json.NewEncoder(w).Encode(map[string]any{"constraints": constraints, "overrides": overrides, "overalls": overalls, "mismatches": mismatches, "hard_conflicts": hardConflicts, "oversized_groups": oversizedGroups})
 	}
 }
 
