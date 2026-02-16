@@ -427,7 +427,9 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
             for (let i = 0; i < sol.rooms.length; i++) {
                 const key = sol.rooms[i].map(m => m.id).sort((a, b) => a - b).join(',');
                 const card = document.createElement('wa-card');
-                card.className = 'room-card' + (lockedRooms.has(key) ? ' room-locked' : '');
+                const locked = lockedRooms.has(key);
+                card.className = 'room-card' + (locked ? ' room-locked' : '');
+                if (locked) card.setAttribute('appearance', 'outlined');
                 const label = document.createElement('div');
                 label.className = 'room-label';
                 label.textContent = 'Room ' + (i + 1);
