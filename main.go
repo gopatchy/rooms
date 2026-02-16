@@ -10,11 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"math/rand"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	texttemplate "text/template"
@@ -179,12 +179,9 @@ func authorize(r *http.Request) (string, bool) {
 }
 
 func isAdmin(email string) bool {
-	for _, a := range strings.Split(os.Getenv("ADMINS"), ",") {
-		if strings.TrimSpace(a) == email {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(strings.Split(os.Getenv("ADMINS"), ","), func(a string) bool {
+		return strings.TrimSpace(a) == email
+	})
 }
 
 func requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -825,14 +822,7 @@ func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
-			owns := false
-			for _, sid := range myStudentIDs {
-				if sid == body.StudentAID {
-					owns = true
-					break
-				}
-			}
-			if !owns {
+			if !slices.Contains(myStudentIDs, body.StudentAID) {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
@@ -1026,7 +1016,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		}
 
 		groups := map[int][]int{}
-		for i := 0; i < n; i++ {
+		for i := range n {
 			root := ufFind(i)
 			groups[root] = append(groups[root], i)
 		}
@@ -1054,7 +1044,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 					if sameRoom { s -= pnMultiple }
 				}
 			}
-			for i := 0; i < n; i++ {
+			for i := range n {
 				if hasPrefer[i] && !gotPrefer[i] {
 					s -= npCost
 				}
@@ -1083,9 +1073,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		for _, members := range groups {
 			groupList = append(groupList, members)
 		}
-		sort.Slice(groupList, func(i, j int) bool {
-			return len(groupList[i]) > len(groupList[j])
-		})
+		slices.SortFunc(groupList, func(a, b []int) int { return len(b) - len(a) })
 
 		roomCap := make([]int, numRooms)
 		for i := range roomCap { roomCap[i] = roomSize }
@@ -1095,7 +1083,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		placeGroups = func(gi int) bool {
 			if gi >= len(groupList) { return true }
 			grp := groupList[gi]
-			for room := 0; room < numRooms; room++ {
+			for room := range numRooms {
 				if roomCap[room] < len(grp) { continue }
 				ok := true
 				for _, member := range grp {
@@ -1105,11 +1093,11 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 						if p[1] == member { partner = p[0] }
 						if partner >= 0 && assignment[partner] == room {
 							alreadyPlaced := false
-							for gj := 0; gj < gi; gj++ {
-								for _, m := range groupList[gj] {
-									if m == partner { alreadyPlaced = true; break }
+							for gj := range gi {
+								if slices.Contains(groupList[gj], partner) {
+									alreadyPlaced = true
+									break
 								}
-								if alreadyPlaced { break }
 							}
 							if alreadyPlaced { ok = false; break }
 						}
@@ -1127,7 +1115,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		placed = placeGroups(0)
 
 		if !placed {
-			for i := 0; i < n; i++ {
+			for i := range n {
 				assignment[i] = i % numRooms
 			}
 		}
@@ -1151,7 +1139,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		for root := range groups {
 			uniqueGroups = append(uniqueGroups, root)
 		}
-		sort.Ints(uniqueGroups)
+		slices.Sort(uniqueGroups)
 
 		hillClimb := func(assignment []int) int {
 			currentScore := score(assignment)
@@ -1165,7 +1153,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 					grp := groups[gRoot]
 					gRoom := assignment[grp[0]]
 
-					for room := 0; room < numRooms; room++ {
+					for room := range numRooms {
 						if room == gRoom { continue }
 						if roomCount(assignment, room)+len(grp) > roomSize { continue }
 						for _, m := range grp { assignment[m] = room }
@@ -1257,7 +1245,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		perturb := func(src []int, count int) {
 			copy(assignment, src)
 			indices := rand.Perm(len(uniqueGroups))
-			if count > len(indices) { count = len(indices) }
+			count = min(count, len(indices))
 			for _, gi := range indices[:count] {
 				grp := groups[uniqueGroups[gi]]
 				oldRoom := assignment[grp[0]]
@@ -1279,7 +1267,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			copy(bestAssignment, assignment)
 		}
 
-		for restart := 0; restart < 30; restart++ {
+		for range 30 {
 			if randomPlacement() {
 				s := hillClimb(assignment)
 				if s > bestScore {
@@ -1289,7 +1277,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		for ils := 0; ils < 200; ils++ {
+		for range 200 {
 			perturb(bestAssignment, 2+rand.Intn(3))
 			s := hillClimb(assignment)
 			if s > bestScore {
@@ -1308,13 +1296,13 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			roomMap[room] = append(roomMap[room], roomMember{ID: sid, Name: studentName[sid]})
 		}
 		var rooms [][]roomMember
-		for room := 0; room < numRooms; room++ {
+		for room := range numRooms {
 			if members, ok := roomMap[room]; ok {
-				sort.Slice(members, func(i, j int) bool { return members[i].Name < members[j].Name })
+				slices.SortFunc(members, func(a, b roomMember) int { return strings.Compare(a.Name, b.Name) })
 				rooms = append(rooms, members)
 			}
 		}
-		sort.Slice(rooms, func(i, j int) bool { return rooms[i][0].Name < rooms[j][0].Name })
+		slices.SortFunc(rooms, func(a, b []roomMember) int { return strings.Compare(a[0].Name, b[0].Name) })
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"rooms": rooms, "score": bestScore})
