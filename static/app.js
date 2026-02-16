@@ -90,6 +90,7 @@ export async function init() {
 
     const signin = document.getElementById('signin');
     signin.style.display = 'flex';
+    signin.style.colorScheme = 'light';
     document.body.style.opacity = 1;
 
     profile = await new Promise((resolve) => {
