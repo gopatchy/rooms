@@ -387,50 +387,70 @@ async function loadStudents() {
             parent: ['must_not'],
             admin: ['must', 'prefer', 'prefer_not', 'must_not']
         };
-        const levelSelect = document.createElement('select');
+        const levelSelect = document.createElement('wa-select');
+        levelSelect.size = 'small';
         for (const level of ['student', 'parent', 'admin']) {
-            const opt = document.createElement('option');
+            const opt = document.createElement('wa-option');
             opt.value = level;
-            opt.textContent = level.charAt(0).toUpperCase() + level.slice(1);
+            opt.textContent = capitalize(level);
             levelSelect.appendChild(opt);
         }
-        const kindSelect = document.createElement('select');
+        levelSelect.value = 'student';
+        const kindSelect = document.createElement('wa-select');
+        kindSelect.size = 'small';
         const updateKinds = () => {
-            kindSelect.innerHTML = '';
+            kindSelect.querySelectorAll('wa-option').forEach(o => o.remove());
             for (const kind of levelKinds[levelSelect.value]) {
-                const opt = document.createElement('option');
+                const opt = document.createElement('wa-option');
                 opt.value = kind;
                 opt.textContent = kindLabels[kind];
                 kindSelect.appendChild(opt);
             }
+            kindSelect.value = levelKinds[levelSelect.value][0];
         };
         updateKinds();
-        levelSelect.addEventListener('change', updateKinds);
-        const studentSelect = document.createElement('select');
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = '';
-        defaultOpt.textContent = 'Student\u2026';
-        studentSelect.appendChild(defaultOpt);
+        levelSelect.addEventListener('wa-change', updateKinds);
+        const studentSelect = document.createElement('wa-select');
+        studentSelect.size = 'small';
+        studentSelect.placeholder = 'Student\u2026';
         for (const other of students) {
             if (other.id === student.id) continue;
-            const opt = document.createElement('option');
+            const opt = document.createElement('wa-option');
             opt.value = other.id;
             opt.textContent = other.name;
             studentSelect.appendChild(opt);
         }
-        const cAddBtn = document.createElement('button');
-        cAddBtn.className = 'input-action';
+        const cAddBtn = document.createElement('wa-button');
+        cAddBtn.size = 'small';
         cAddBtn.textContent = '+';
         cAddBtn.addEventListener('click', async () => {
             const otherID = parseInt(studentSelect.value);
             if (!otherID) return;
+            const savedLevel = levelSelect.value;
+            const savedKind = kindSelect.value;
             await api('POST', '/api/trips/' + tripID + '/constraints', {
                 student_a_id: student.id,
                 student_b_id: otherID,
-                kind: kindSelect.value,
-                level: levelSelect.value
+                kind: savedKind,
+                level: savedLevel
             });
-            loadStudents();
+            await loadStudents();
+            const card = document.querySelector('[data-student-id="' + student.id + '"]');
+            if (card) {
+                const selects = card.querySelectorAll('.constraint-add wa-select');
+                if (selects[0]) selects[0].value = savedLevel;
+                if (selects[1]) {
+                    const kinds = levelKinds[savedLevel];
+                    selects[1].querySelectorAll('wa-option').forEach(o => o.remove());
+                    for (const kind of kinds) {
+                        const opt = document.createElement('wa-option');
+                        opt.value = kind;
+                        opt.textContent = kindLabels[kind];
+                        selects[1].appendChild(opt);
+                    }
+                    selects[1].value = savedKind;
+                }
+            }
         });
         addRow.appendChild(levelSelect);
         addRow.appendChild(kindSelect);
