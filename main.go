@@ -10,12 +10,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	texttemplate "text/template"
+	"math"
+	"math/rand"
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	texttemplate "text/template"
 
 	_ "github.com/lib/pq"
 	"google.golang.org/api/idtoken"
@@ -77,6 +80,7 @@ func main() {
 	http.HandleFunc("GET /api/trips/{tripID}/constraints", handleListConstraints(db))
 	http.HandleFunc("POST /api/trips/{tripID}/constraints", handleCreateConstraint(db))
 	http.HandleFunc("DELETE /api/trips/{tripID}/constraints/{constraintID}", handleDeleteConstraint(db))
+	http.HandleFunc("POST /api/trips/{tripID}/solve", handleSolve(db))
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(); err != nil {
 			http.Error(w, "db unhealthy", http.StatusServiceUnavailable)
@@ -236,13 +240,13 @@ func handleListTrips(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		rows, err := db.Query(`
-			SELECT t.id, t.name, t.room_size, COALESCE(
+			SELECT t.id, t.name, t.room_size, t.prefer_not_multiple, COALESCE(
 				json_agg(json_build_object('id', ta.id, 'email', ta.email)) FILTER (WHERE ta.id IS NOT NULL),
 				'[]'
 			)
 			FROM trips t
 			LEFT JOIN trip_admins ta ON ta.trip_id = t.id
-			GROUP BY t.id, t.name, t.room_size
+			GROUP BY t.id, t.name, t.room_size, t.prefer_not_multiple
 			ORDER BY t.id`)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -255,17 +259,18 @@ func handleListTrips(db *sql.DB) http.HandlerFunc {
 			Email string `json:"email"`
 		}
 		type trip struct {
-			ID       int64       `json:"id"`
-			Name     string      `json:"name"`
-			RoomSize int         `json:"room_size"`
-			Admins   []tripAdmin `json:"admins"`
+			ID                 int64       `json:"id"`
+			Name               string      `json:"name"`
+			RoomSize           int         `json:"room_size"`
+			PreferNotMultiple  int         `json:"prefer_not_multiple"`
+			Admins             []tripAdmin `json:"admins"`
 		}
 
 		var trips []trip
 		for rows.Next() {
 			var t trip
 			var adminsJSON string
-			if err := rows.Scan(&t.ID, &t.Name, &t.RoomSize, &adminsJSON); err != nil {
+			if err := rows.Scan(&t.ID, &t.Name, &t.RoomSize, &t.PreferNotMultiple, &adminsJSON); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -384,14 +389,14 @@ func handleGetTrip(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		var name string
-		var roomSize int
-		err := db.QueryRow("SELECT name, room_size FROM trips WHERE id = $1", tripID).Scan(&name, &roomSize)
+		var roomSize, preferNotMultiple int
+		err := db.QueryRow("SELECT name, room_size, prefer_not_multiple FROM trips WHERE id = $1", tripID).Scan(&name, &roomSize, &preferNotMultiple)
 		if err != nil {
 			http.Error(w, "trip not found", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"id": tripID, "name": name, "room_size": roomSize})
+		json.NewEncoder(w).Encode(map[string]any{"id": tripID, "name": name, "room_size": roomSize, "prefer_not_multiple": preferNotMultiple})
 	}
 }
 
@@ -557,16 +562,36 @@ func handleUpdateTrip(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		var body struct {
-			RoomSize int `json:"room_size"`
+			RoomSize          *int `json:"room_size"`
+			PreferNotMultiple *int `json:"prefer_not_multiple"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RoomSize < 1 {
-			http.Error(w, "room_size must be at least 1", http.StatusBadRequest)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		_, err := db.Exec("UPDATE trips SET room_size = $1 WHERE id = $2", body.RoomSize, tripID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		if body.RoomSize != nil {
+			if *body.RoomSize < 1 {
+				http.Error(w, "room_size must be at least 1", http.StatusBadRequest)
+				return
+			}
+		}
+		if body.PreferNotMultiple != nil {
+			if *body.PreferNotMultiple < 1 {
+				http.Error(w, "prefer_not_multiple must be at least 1", http.StatusBadRequest)
+				return
+			}
+		}
+		if body.RoomSize != nil {
+			if _, err := db.Exec("UPDATE trips SET room_size = $1 WHERE id = $2", *body.RoomSize, tripID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if body.PreferNotMultiple != nil {
+			if _, err := db.Exec("UPDATE trips SET prefer_not_multiple = $1 WHERE id = $2", *body.PreferNotMultiple, tripID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -694,5 +719,312 @@ func handleDeleteConstraint(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleSolve(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+
+		var roomSize, pnMultiple int
+		err := db.QueryRow("SELECT room_size, prefer_not_multiple FROM trips WHERE id = $1", tripID).Scan(&roomSize, &pnMultiple)
+		if err != nil {
+			http.Error(w, "trip not found", http.StatusNotFound)
+			return
+		}
+
+		rows, err := db.Query("SELECT id, name FROM students WHERE trip_id = $1 ORDER BY id", tripID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		var studentIDs []int64
+		studentName := map[int64]string{}
+		for rows.Next() {
+			var id int64
+			var name string
+			if err := rows.Scan(&id, &name); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			studentIDs = append(studentIDs, id)
+			studentName[id] = name
+		}
+
+		if len(studentIDs) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"rooms": []any{}, "score": 0})
+			return
+		}
+
+		crows, err := db.Query(`
+			SELECT rc.student_a_id, rc.student_b_id, rc.kind::text, rc.level::text
+			FROM roommate_constraints rc
+			JOIN students sa ON sa.id = rc.student_a_id
+			WHERE sa.trip_id = $1`, tripID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer crows.Close()
+
+		type constraint struct {
+			aID, bID     int64
+			kind, level  string
+		}
+		var allConstraints []constraint
+		for crows.Next() {
+			var c constraint
+			if err := crows.Scan(&c.aID, &c.bID, &c.kind, &c.level); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			allConstraints = append(allConstraints, c)
+		}
+
+		type pairKey struct{ a, b int64 }
+		overalls := map[pairKey]string{}
+		byPair := map[pairKey]map[string]string{}
+		for _, c := range allConstraints {
+			pk := pairKey{c.aID, c.bID}
+			if byPair[pk] == nil {
+				byPair[pk] = map[string]string{}
+			}
+			byPair[pk][c.level] = c.kind
+		}
+		levelPriority := []string{"admin", "parent", "student"}
+		for pk, levels := range byPair {
+			for _, lev := range levelPriority {
+				if kind, ok := levels[lev]; ok {
+					overalls[pk] = kind
+					break
+				}
+			}
+		}
+
+		idx := map[int64]int{}
+		for i, id := range studentIDs {
+			idx[id] = i
+		}
+		n := len(studentIDs)
+
+		mustTogether := map[[2]int]bool{}
+		mustApart := map[[2]int]bool{}
+		for pk, kind := range overalls {
+			ai, bi := idx[pk.a], idx[pk.b]
+			switch kind {
+			case "must":
+				p := [2]int{ai, bi}
+				if p[0] > p[1] { p[0], p[1] = p[1], p[0] }
+				mustTogether[p] = true
+			case "must_not":
+				p := [2]int{ai, bi}
+				if p[0] > p[1] { p[0], p[1] = p[1], p[0] }
+				mustApart[p] = true
+			}
+		}
+
+		uf := make([]int, n)
+		for i := range uf { uf[i] = i }
+		var ufFind func(int) int
+		ufFind = func(x int) int {
+			if uf[x] != x { uf[x] = ufFind(uf[x]) }
+			return uf[x]
+		}
+		ufUnion := func(a, b int) {
+			ra, rb := ufFind(a), ufFind(b)
+			if ra != rb { uf[ra] = rb }
+		}
+
+		for p := range mustTogether {
+			ufUnion(p[0], p[1])
+		}
+
+		hasConflict := false
+		for p := range mustApart {
+			if ufFind(p[0]) == ufFind(p[1]) {
+				hasConflict = true
+				break
+			}
+		}
+
+		if hasConflict {
+			http.Error(w, "hard conflicts exist, resolve before solving", http.StatusBadRequest)
+			return
+		}
+
+		groups := map[int][]int{}
+		for i := 0; i < n; i++ {
+			root := ufFind(i)
+			groups[root] = append(groups[root], i)
+		}
+
+		score := func(assignment []int) int {
+			s := 0
+			for pk, kind := range overalls {
+				ai, bi := idx[pk.a], idx[pk.b]
+				sameRoom := assignment[ai] == assignment[bi]
+				switch kind {
+				case "prefer":
+					if sameRoom { s++ }
+				case "prefer_not":
+					if sameRoom { s -= pnMultiple }
+				}
+			}
+			return s
+		}
+
+		feasible := func(assignment []int) bool {
+			for p := range mustApart {
+				if assignment[p[0]] == assignment[p[1]] { return false }
+			}
+			roomCounts := map[int]int{}
+			for _, room := range assignment {
+				roomCounts[room]++
+			}
+			for _, cnt := range roomCounts {
+				if cnt > roomSize { return false }
+			}
+			return true
+		}
+
+		numRooms := (n + roomSize - 1) / roomSize
+
+		assignment := make([]int, n)
+		groupList := make([][]int, 0, len(groups))
+		for _, members := range groups {
+			groupList = append(groupList, members)
+		}
+		sort.Slice(groupList, func(i, j int) bool {
+			return len(groupList[i]) > len(groupList[j])
+		})
+
+		roomCap := make([]int, numRooms)
+		for i := range roomCap { roomCap[i] = roomSize }
+
+		placed := false
+		var placeGroups func(gi int) bool
+		placeGroups = func(gi int) bool {
+			if gi >= len(groupList) { return true }
+			grp := groupList[gi]
+			for room := 0; room < numRooms; room++ {
+				if roomCap[room] < len(grp) { continue }
+				ok := true
+				for _, member := range grp {
+					for p := range mustApart {
+						partner := -1
+						if p[0] == member { partner = p[1] }
+						if p[1] == member { partner = p[0] }
+						if partner >= 0 && assignment[partner] == room {
+							alreadyPlaced := false
+							for gj := 0; gj < gi; gj++ {
+								for _, m := range groupList[gj] {
+									if m == partner { alreadyPlaced = true; break }
+								}
+								if alreadyPlaced { break }
+							}
+							if alreadyPlaced { ok = false; break }
+						}
+					}
+					if !ok { break }
+				}
+				if !ok { continue }
+				for _, member := range grp { assignment[member] = room }
+				roomCap[room] -= len(grp)
+				if placeGroups(gi + 1) { return true }
+				roomCap[room] += len(grp)
+			}
+			return false
+		}
+		placed = placeGroups(0)
+
+		if !placed {
+			for i := 0; i < n; i++ {
+				assignment[i] = i % numRooms
+			}
+		}
+
+		bestAssignment := make([]int, n)
+		copy(bestAssignment, assignment)
+		bestScore := score(assignment)
+
+		temp := 10.0
+		cooling := 0.9995
+		iterations := 50000
+
+		for iter := 0; iter < iterations; iter++ {
+			i := rand.Intn(n)
+			j := rand.Intn(n)
+			if assignment[i] == assignment[j] { continue }
+
+			iRoot := ufFind(i)
+			jRoot := ufFind(j)
+
+			if iRoot == jRoot { continue }
+
+			iGroup := groups[iRoot]
+			jGroup := groups[jRoot]
+
+			iRoom := assignment[i]
+			jRoom := assignment[j]
+
+			roomI := 0
+			roomJ := 0
+			for _, a := range assignment {
+				if a == iRoom { roomI++ }
+				if a == jRoom { roomJ++ }
+			}
+
+			newRoomI := roomI - len(iGroup) + len(jGroup)
+			newRoomJ := roomJ - len(jGroup) + len(iGroup)
+			if newRoomI > roomSize || newRoomJ > roomSize { continue }
+
+			for _, m := range iGroup { assignment[m] = jRoom }
+			for _, m := range jGroup { assignment[m] = iRoom }
+
+			if !feasible(assignment) {
+				for _, m := range iGroup { assignment[m] = iRoom }
+				for _, m := range jGroup { assignment[m] = jRoom }
+				continue
+			}
+
+			newScore := score(assignment)
+			delta := newScore - bestScore
+			if delta > 0 || rand.Float64() < math.Exp(float64(delta)/temp) {
+				if newScore > bestScore {
+					bestScore = newScore
+					copy(bestAssignment, assignment)
+				}
+			} else {
+				for _, m := range iGroup { assignment[m] = iRoom }
+				for _, m := range jGroup { assignment[m] = jRoom }
+			}
+			temp *= cooling
+		}
+
+		type roomMember struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		}
+		roomMap := map[int][]roomMember{}
+		for i, room := range bestAssignment {
+			sid := studentIDs[i]
+			roomMap[room] = append(roomMap[room], roomMember{ID: sid, Name: studentName[sid]})
+		}
+		var rooms [][]roomMember
+		for room := 0; room < numRooms; room++ {
+			if members, ok := roomMap[room]; ok {
+				sort.Slice(members, func(i, j int) bool { return members[i].Name < members[j].Name })
+				rooms = append(rooms, members)
+			}
+		}
+		sort.Slice(rooms, func(i, j int) bool { return rooms[i][0].Name < rooms[j][0].Name })
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"rooms": rooms, "score": bestScore})
 	}
 }

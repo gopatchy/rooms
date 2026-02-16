@@ -55,8 +55,9 @@
             padding: 0 0.2rem;
         }
         .input-action:hover { opacity: 1; }
-        #trip-settings { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
-        #room-size { width: 3.5rem; font-size: 0.85rem; padding: 0.2rem; border: 1px solid var(--wa-color-neutral-300, #ccc); border-radius: 0.25rem; }
+        #trip-settings { margin-bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.3rem; }
+        #trip-settings label { display: flex; align-items: center; gap: 0.5rem; }
+        #trip-settings input[type="number"] { width: 3.5rem; font-size: 0.85rem; padding: 0.2rem; border: 1px solid var(--wa-color-neutral-300, #ccc); border-radius: 0.25rem; }
         .constraint-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; padding-bottom: 0.3rem; margin-bottom: 0.3rem; border-bottom: 1px solid #909090; }
         .constraint-level { font-size: 0.65rem; font-weight: bold; background: var(--wa-color-neutral-200, #ddd); color: var(--wa-color-neutral-700, #555); border-radius: 0.25rem; padding: 0.1rem 0.35rem; }
         .constraint-add { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.3rem; }
@@ -66,6 +67,11 @@
         #hard-conflicts { margin-bottom: 0.5rem; }
         .conflict-row { margin-bottom: 0.2rem; }
         .conflict-icon { background: var(--wa-color-danger-50, #dc3545); color: white; border-radius: 0.15rem; padding: 0 0.15rem; font-size: 0.6rem; line-height: 1.2; vertical-align: middle; margin-right: 0.1rem; display: inline-block; }
+        #solver { margin-bottom: 0.75rem; }
+        #solver-results { margin-top: 0.5rem; }
+        .room-card { margin-bottom: 0.3rem; }
+        .room-label { font-weight: bold; font-size: 0.8rem; margin-bottom: 0.2rem; }
+        .solver-score { font-size: 0.8rem; margin-top: 0.3rem; color: var(--wa-color-neutral-500); }
     </style>
 </head>
 <body>
@@ -79,12 +85,16 @@
         </div>
         <h2 id="trip-name"></h2>
         <div id="trip-settings">
-            <label for="room-size">Students per room:</label>
-            <input id="room-size" type="number" min="1">
+            <label>Students per room: <input id="room-size" type="number" min="1"></label>
+            <label>Prefer Not cost: <input id="pn-multiple" type="number" min="1"></label>
         </div>
         <div id="conflicts"></div>
         <div id="mismatches"></div>
         <div id="hard-conflicts"></div>
+        <div id="solver">
+            <wa-button id="solve-btn" size="small">Solve Rooms</wa-button>
+            <div id="solver-results"></div>
+        </div>
         <div id="students"></div>
         <wa-details summary="Add Student">
             <div class="add-form">

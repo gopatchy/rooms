@@ -16,11 +16,16 @@ try {
 
 document.getElementById('trip-name').textContent = trip.name;
 document.getElementById('room-size').value = trip.room_size;
+document.getElementById('pn-multiple').value = trip.prefer_not_multiple;
 document.getElementById('main').style.display = 'block';
 document.getElementById('logout-btn').addEventListener('click', logout);
 document.getElementById('room-size').addEventListener('change', async () => {
     const size = parseInt(document.getElementById('room-size').value);
     if (size >= 1) await api('PATCH', '/api/trips/' + tripID, { room_size: size });
+});
+document.getElementById('pn-multiple').addEventListener('change', async () => {
+    const val = parseInt(document.getElementById('pn-multiple').value);
+    if (val >= 1) await api('PATCH', '/api/trips/' + tripID, { prefer_not_multiple: val });
 });
 
 async function loadStudents() {
@@ -480,6 +485,42 @@ async function addStudent() {
 }
 
 document.getElementById('add-student-btn').addEventListener('click', addStudent);
+document.getElementById('solve-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('solve-btn');
+    btn.loading = true;
+    try {
+        const result = await api('POST', '/api/trips/' + tripID + '/solve');
+        const container = document.getElementById('solver-results');
+        container.innerHTML = '';
+        for (let i = 0; i < result.rooms.length; i++) {
+            const card = document.createElement('wa-card');
+            card.className = 'room-card';
+            const label = document.createElement('div');
+            label.className = 'room-label';
+            label.textContent = 'Room ' + (i + 1);
+            card.appendChild(label);
+            const tags = document.createElement('div');
+            tags.className = 'tags';
+            for (const member of result.rooms[i]) {
+                const tag = document.createElement('wa-tag');
+                tag.size = 'small';
+                tag.textContent = member.name;
+                tags.appendChild(tag);
+            }
+            card.appendChild(tags);
+            container.appendChild(card);
+        }
+        const scoreDiv = document.createElement('div');
+        scoreDiv.className = 'solver-score';
+        scoreDiv.textContent = 'Score: ' + result.score;
+        container.appendChild(scoreDiv);
+    } catch (e) {
+        const container = document.getElementById('solver-results');
+        container.textContent = e.message || 'Solver failed';
+    } finally {
+        btn.loading = false;
+    }
+});
 document.getElementById('new-student-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
 document.getElementById('new-student-email').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
 await loadStudents();
