@@ -139,18 +139,10 @@ func printStats(label string, results []runResult, runs int) {
 func main() {
 	dir := flag.String("dir", "tmp", "directory with trip/students/constraints JSON files")
 	runs := flag.Int("runs", 20, "number of solver runs per parameter set")
-	algo := flag.String("algo", "both", "algorithm: hillclimb, fast, sa, hybrid, both, all")
-	numRandom := flag.String("random", "30", "comma-separated random placement counts (hillclimb)")
-	numPerturb := flag.String("perturb", "200", "comma-separated perturbation counts (hillclimb)")
-	perturbMin := flag.Int("pmin", 2, "perturbation min groups (hillclimb)")
-	perturbMax := flag.Int("pmax", 5, "perturbation max groups (hillclimb)")
-	saRestarts := flag.String("restarts", "20", "comma-separated SA/hybrid restart counts")
-	saSteps := flag.String("steps", "10000", "comma-separated SA step counts")
-	hybridSteps := flag.String("hsteps", "5000", "comma-separated hybrid SA step counts")
-	saTempHigh := flag.Float64("thigh", 5.0, "SA initial temperature")
-	saTempLow := flag.Float64("tlow", 0.01, "SA final temperature")
-	hybridTempHigh := flag.Float64("hthigh", 10.0, "hybrid SA initial temperature")
-	hybridTempLow := flag.Float64("htlow", 0.1, "hybrid SA final temperature")
+	numRandom := flag.String("random", "50", "comma-separated random placement counts")
+	numPerturb := flag.String("perturb", "750", "comma-separated perturbation counts")
+	perturbMin := flag.Int("pmin", 3, "perturbation min groups")
+	perturbMax := flag.Int("pmax", 8, "perturbation max groups")
 	flag.Parse()
 
 	tripBytes, err := os.ReadFile(*dir + "/1")
@@ -201,127 +193,32 @@ func main() {
 	fmt.Printf("Prefer Not multiple: %d, No Prefer cost: %d\n", trip.PreferNotMultiple, trip.NoPreferCost)
 	fmt.Printf("Runs per config: %d\n\n", *runs)
 
-	if *algo == "hillclimb" || *algo == "both" {
-		randomCounts := parseIntList(*numRandom)
-		perturbCounts := parseIntList(*numPerturb)
-		for _, nr := range randomCounts {
-			for _, np := range perturbCounts {
-				params := solver.Params{
-					NumRandom:  nr,
-					NumPerturb: np,
-					PerturbMin: *perturbMin,
-					PerturbMax: *perturbMax,
-				}
-				var results []runResult
-				for run := range *runs {
-					rng := rand.New(rand.NewSource(int64(run * 31337)))
-					start := time.Now()
-					sols := solver.Solve(n, trip.RoomSize, trip.PreferNotMultiple, trip.NoPreferCost, constraints, params, rng)
-					elapsed := time.Since(start)
-					if len(sols) > 0 {
-						var assignments [][]int
-						for _, s := range sols {
-							assignments = append(assignments, s.Assignment)
-						}
-						results = append(results, runResult{sols[0].Score, assignments, elapsed})
-					}
-				}
-				label := fmt.Sprintf("hillclimb random=%d perturb=%d pmin=%d pmax=%d", nr, np, *perturbMin, *perturbMax)
-				printStats(label, results, *runs)
+	randomCounts := parseIntList(*numRandom)
+	perturbCounts := parseIntList(*numPerturb)
+	for _, nr := range randomCounts {
+		for _, np := range perturbCounts {
+			params := solver.Params{
+				NumRandom:  nr,
+				NumPerturb: np,
+				PerturbMin: *perturbMin,
+				PerturbMax: *perturbMax,
 			}
-		}
-	}
-
-	if *algo == "fast" || *algo == "both" || *algo == "all" {
-		randomCounts := parseIntList(*numRandom)
-		perturbCounts := parseIntList(*numPerturb)
-		for _, nr := range randomCounts {
-			for _, np := range perturbCounts {
-				params := solver.Params{
-					NumRandom:  nr,
-					NumPerturb: np,
-					PerturbMin: *perturbMin,
-					PerturbMax: *perturbMax,
-				}
-				var results []runResult
-				for run := range *runs {
-					rng := rand.New(rand.NewSource(int64(run * 31337)))
-					start := time.Now()
-					sols := solver.SolveFast(n, trip.RoomSize, trip.PreferNotMultiple, trip.NoPreferCost, constraints, params, rng)
-					elapsed := time.Since(start)
-					if len(sols) > 0 {
-						var assignments [][]int
-						for _, s := range sols {
-							assignments = append(assignments, s.Assignment)
-						}
-						results = append(results, runResult{sols[0].Score, assignments, elapsed})
+			var results []runResult
+			for run := range *runs {
+				rng := rand.New(rand.NewSource(int64(run * 31337)))
+				start := time.Now()
+				sols := solver.SolveFast(n, trip.RoomSize, trip.PreferNotMultiple, trip.NoPreferCost, constraints, params, rng)
+				elapsed := time.Since(start)
+				if len(sols) > 0 {
+					var assignments [][]int
+					for _, s := range sols {
+						assignments = append(assignments, s.Assignment)
 					}
+					results = append(results, runResult{sols[0].Score, assignments, elapsed})
 				}
-				label := fmt.Sprintf("fast random=%d perturb=%d pmin=%d pmax=%d", nr, np, *perturbMin, *perturbMax)
-				printStats(label, results, *runs)
 			}
-		}
-	}
-
-	if *algo == "sa" || *algo == "all" {
-		restartCounts := parseIntList(*saRestarts)
-		stepCounts := parseIntList(*saSteps)
-		for _, nr := range restartCounts {
-			for _, ns := range stepCounts {
-				params := solver.SAParams{
-					Restarts: nr,
-					Steps:    ns,
-					TempHigh: *saTempHigh,
-					TempLow:  *saTempLow,
-				}
-				var results []runResult
-				for run := range *runs {
-					rng := rand.New(rand.NewSource(int64(run * 31337)))
-					start := time.Now()
-					sols := solver.SolveSA(n, trip.RoomSize, trip.PreferNotMultiple, trip.NoPreferCost, constraints, params, rng)
-					elapsed := time.Since(start)
-					if len(sols) > 0 {
-						var assignments [][]int
-						for _, s := range sols {
-							assignments = append(assignments, s.Assignment)
-						}
-						results = append(results, runResult{sols[0].Score, assignments, elapsed})
-					}
-				}
-				label := fmt.Sprintf("sa restarts=%d steps=%d thigh=%.1f tlow=%.3f", nr, ns, *saTempHigh, *saTempLow)
-				printStats(label, results, *runs)
-			}
-		}
-	}
-
-	if *algo == "hybrid" || *algo == "both" || *algo == "all" {
-		restartCounts := parseIntList(*saRestarts)
-		stepCounts := parseIntList(*hybridSteps)
-		for _, nr := range restartCounts {
-			for _, ns := range stepCounts {
-				params := solver.HybridParams{
-					SARestarts: nr,
-					SASteps:    ns,
-					TempHigh:   *hybridTempHigh,
-					TempLow:    *hybridTempLow,
-				}
-				var results []runResult
-				for run := range *runs {
-					rng := rand.New(rand.NewSource(int64(run * 31337)))
-					start := time.Now()
-					sols := solver.SolveHybrid(n, trip.RoomSize, trip.PreferNotMultiple, trip.NoPreferCost, constraints, params, rng)
-					elapsed := time.Since(start)
-					if len(sols) > 0 {
-						var assignments [][]int
-						for _, s := range sols {
-							assignments = append(assignments, s.Assignment)
-						}
-						results = append(results, runResult{sols[0].Score, assignments, elapsed})
-					}
-				}
-				label := fmt.Sprintf("hybrid restarts=%d steps=%d thigh=%.1f tlow=%.3f", nr, ns, *hybridTempHigh, *hybridTempLow)
-				printStats(label, results, *runs)
-			}
+			label := fmt.Sprintf("random=%d perturb=%d pmin=%d pmax=%d", nr, np, *perturbMin, *perturbMax)
+			printStats(label, results, *runs)
 		}
 	}
 }
