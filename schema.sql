@@ -1,5 +1,8 @@
+DROP TABLE IF EXISTS roommate_constraints;
+DROP TYPE IF EXISTS constraint_kind;
+
 DO $$ BEGIN
-    CREATE TYPE constraint_kind AS ENUM ('happy', 'ok', 'never');
+    CREATE TYPE constraint_kind AS ENUM ('must', 'prefer', 'prefer_not', 'must_not');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -12,6 +15,8 @@ CREATE TABLE IF NOT EXISTS trips (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL
 );
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS room_size INTEGER NOT NULL DEFAULT 2;
 
 CREATE TABLE IF NOT EXISTS trip_admins (
     id BIGSERIAL PRIMARY KEY,
@@ -41,5 +46,6 @@ CREATE TABLE IF NOT EXISTS roommate_constraints (
     student_b_id BIGINT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     kind constraint_kind NOT NULL,
     level constraint_level NOT NULL,
+    CHECK(student_a_id < student_b_id),
     UNIQUE(student_a_id, student_b_id, level)
 );

@@ -68,11 +68,15 @@ func main() {
 	http.HandleFunc("GET /trip/{tripID}", serveHTML("trip.html"))
 	http.HandleFunc("GET /trip.js", serveJS("trip.js"))
 	http.HandleFunc("GET /api/trips/{tripID}", handleGetTrip(db))
+	http.HandleFunc("PATCH /api/trips/{tripID}", handleUpdateTrip(db))
 	http.HandleFunc("GET /api/trips/{tripID}/students", handleListStudents(db))
 	http.HandleFunc("POST /api/trips/{tripID}/students", handleCreateStudent(db))
 	http.HandleFunc("DELETE /api/trips/{tripID}/students/{studentID}", handleDeleteStudent(db))
 	http.HandleFunc("POST /api/trips/{tripID}/students/{studentID}/parents", handleAddParent(db))
 	http.HandleFunc("DELETE /api/trips/{tripID}/students/{studentID}/parents/{parentID}", handleRemoveParent(db))
+	http.HandleFunc("GET /api/trips/{tripID}/constraints", handleListConstraints(db))
+	http.HandleFunc("POST /api/trips/{tripID}/constraints", handleCreateConstraint(db))
+	http.HandleFunc("DELETE /api/trips/{tripID}/constraints/{constraintID}", handleDeleteConstraint(db))
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(); err != nil {
 			http.Error(w, "db unhealthy", http.StatusServiceUnavailable)
@@ -232,13 +236,13 @@ func handleListTrips(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		rows, err := db.Query(`
-			SELECT t.id, t.name, COALESCE(
+			SELECT t.id, t.name, t.room_size, COALESCE(
 				json_agg(json_build_object('id', ta.id, 'email', ta.email)) FILTER (WHERE ta.id IS NOT NULL),
 				'[]'
 			)
 			FROM trips t
 			LEFT JOIN trip_admins ta ON ta.trip_id = t.id
-			GROUP BY t.id, t.name
+			GROUP BY t.id, t.name, t.room_size
 			ORDER BY t.id`)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -251,16 +255,17 @@ func handleListTrips(db *sql.DB) http.HandlerFunc {
 			Email string `json:"email"`
 		}
 		type trip struct {
-			ID     int64       `json:"id"`
-			Name   string      `json:"name"`
-			Admins []tripAdmin `json:"admins"`
+			ID       int64       `json:"id"`
+			Name     string      `json:"name"`
+			RoomSize int         `json:"room_size"`
+			Admins   []tripAdmin `json:"admins"`
 		}
 
 		var trips []trip
 		for rows.Next() {
 			var t trip
 			var adminsJSON string
-			if err := rows.Scan(&t.ID, &t.Name, &adminsJSON); err != nil {
+			if err := rows.Scan(&t.ID, &t.Name, &t.RoomSize, &adminsJSON); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -379,13 +384,14 @@ func handleGetTrip(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		var name string
-		err := db.QueryRow("SELECT name FROM trips WHERE id = $1", tripID).Scan(&name)
+		var roomSize int
+		err := db.QueryRow("SELECT name, room_size FROM trips WHERE id = $1", tripID).Scan(&name, &roomSize)
 		if err != nil {
 			http.Error(w, "trip not found", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"id": tripID, "name": name})
+		json.NewEncoder(w).Encode(map[string]any{"id": tripID, "name": name, "room_size": roomSize})
 	}
 }
 
@@ -538,6 +544,141 @@ func handleRemoveParent(db *sql.DB) http.HandlerFunc {
 		}
 		if n, _ := result.RowsAffected(); n == 0 {
 			http.Error(w, "parent not found", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleUpdateTrip(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			RoomSize int `json:"room_size"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RoomSize < 1 {
+			http.Error(w, "room_size must be at least 1", http.StatusBadRequest)
+			return
+		}
+		_, err := db.Exec("UPDATE trips SET room_size = $1 WHERE id = $2", body.RoomSize, tripID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleListConstraints(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		rows, err := db.Query(`
+			SELECT rc.id, rc.student_a_id, sa.name, rc.student_b_id, sb.name, rc.kind::text, rc.level::text
+			FROM roommate_constraints rc
+			JOIN students sa ON sa.id = rc.student_a_id
+			JOIN students sb ON sb.id = rc.student_b_id
+			WHERE sa.trip_id = $1
+			ORDER BY rc.id`, tripID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type constraint struct {
+			ID           int64  `json:"id"`
+			StudentAID   int64  `json:"student_a_id"`
+			StudentAName string `json:"student_a_name"`
+			StudentBID   int64  `json:"student_b_id"`
+			StudentBName string `json:"student_b_name"`
+			Kind         string `json:"kind"`
+			Level        string `json:"level"`
+		}
+
+		var constraints []constraint
+		for rows.Next() {
+			var c constraint
+			if err := rows.Scan(&c.ID, &c.StudentAID, &c.StudentAName, &c.StudentBID, &c.StudentBName, &c.Kind, &c.Level); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			constraints = append(constraints, c)
+		}
+		if constraints == nil {
+			constraints = []constraint{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(constraints)
+	}
+}
+
+func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			StudentAID int64  `json:"student_a_id"`
+			StudentBID int64  `json:"student_b_id"`
+			Kind       string `json:"kind"`
+			Level      string `json:"level"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if body.StudentAID == body.StudentBID {
+			http.Error(w, "students must be different", http.StatusBadRequest)
+			return
+		}
+		a, b := body.StudentAID, body.StudentBID
+		if a > b {
+			a, b = b, a
+		}
+		var id int64
+		err := db.QueryRow(`
+			INSERT INTO roommate_constraints (student_a_id, student_b_id, kind, level)
+			SELECT $1, $2, $3::constraint_kind, $4::constraint_level
+			FROM students sa
+			JOIN students sb ON sb.id = $2 AND sb.trip_id = $5
+			WHERE sa.id = $1 AND sa.trip_id = $5
+			ON CONFLICT (student_a_id, student_b_id, level) DO UPDATE SET kind = EXCLUDED.kind
+			RETURNING id`, a, b, body.Kind, body.Level, tripID).Scan(&id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": id})
+	}
+}
+
+func handleDeleteConstraint(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, ok := requireTripAdmin(db, w, r)
+		if !ok {
+			return
+		}
+		constraintID, err := strconv.ParseInt(r.PathValue("constraintID"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid constraint ID", http.StatusBadRequest)
+			return
+		}
+		result, err := db.Exec(`DELETE FROM roommate_constraints WHERE id = $1
+			AND student_a_id IN (SELECT id FROM students WHERE trip_id = $2)`, constraintID, tripID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			http.Error(w, "constraint not found", http.StatusNotFound)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

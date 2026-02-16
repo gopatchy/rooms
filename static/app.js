@@ -56,6 +56,7 @@ export async function api(method, path, body) {
     if (!res.ok) {
         throw new Error(await res.text());
     }
+    if (res.status === 204) return null;
     return res.json();
 }
 

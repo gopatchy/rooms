@@ -54,6 +54,12 @@
             padding: 0 0.2rem;
         }
         .input-action:hover { opacity: 1; }
+        #trip-settings { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+        #room-size { width: 3.5rem; font-size: 0.85rem; padding: 0.2rem; border: 1px solid var(--wa-color-neutral-300, #ccc); border-radius: 0.25rem; }
+        .constraint-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin-bottom: 0.2rem; }
+        .constraint-level { font-size: 0.7rem; font-weight: bold; opacity: 0.6; }
+        .constraint-add { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.3rem; }
+        .constraint-add select { font-size: 0.75rem; padding: 0.15rem; border: 1px solid var(--wa-color-neutral-300, #ccc); border-radius: 0.25rem; }
     </style>
 </head>
 <body>
@@ -66,6 +72,10 @@
             <wa-button variant="neutral" size="small" id="logout-btn">Switch User</wa-button>
         </div>
         <h2 id="trip-name"></h2>
+        <div id="trip-settings">
+            <label for="room-size">Students per room:</label>
+            <input id="room-size" type="number" min="1">
+        </div>
         <div id="students"></div>
         <wa-details summary="Add Student">
             <div class="add-form">
