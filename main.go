@@ -801,6 +801,13 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 			Level        string `json:"level"`
 		}
 		var overalls []overallEntry
+		type mismatchEntry struct {
+			NameA string `json:"name_a"`
+			NameB string `json:"name_b"`
+			KindA string `json:"kind_a"`
+			KindB string `json:"kind_b"`
+		}
+		var mismatches []mismatchEntry
 
 		if role == "admin" {
 			type pairKey struct{ a, b int64 }
@@ -865,6 +872,27 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 					constraints[i].Override = &desc
 				}
 			}
+			overallMap := map[pairKey]overallEntry{}
+			for _, o := range overalls {
+				overallMap[pairKey{o.StudentAID, o.StudentBID}] = o
+			}
+			for _, o := range overalls {
+				rev, ok := overallMap[pairKey{o.StudentBID, o.StudentAID}]
+				if !ok {
+					continue
+				}
+				if isPositive(o.Kind) && !isPositive(rev.Kind) {
+					mismatches = append(mismatches, mismatchEntry{
+						NameA: rev.StudentBName,
+						NameB: o.StudentBName,
+						KindA: o.Kind,
+						KindB: rev.Kind,
+					})
+				}
+			}
+		}
+		if mismatches == nil {
+			mismatches = []mismatchEntry{}
 		}
 		if overrides == nil {
 			overrides = []overrideEntry{}
@@ -874,7 +902,7 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"constraints": constraints, "overrides": overrides, "overalls": overalls})
+		json.NewEncoder(w).Encode(map[string]any{"constraints": constraints, "overrides": overrides, "overalls": overalls, "mismatches": mismatches})
 	}
 }
 

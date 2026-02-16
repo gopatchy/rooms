@@ -59,7 +59,6 @@ async function loadStudents() {
     const kindVariant = { must: 'success', prefer: 'brand', prefer_not: 'warning', must_not: 'danger' };
     const kindColor = { must: 'var(--wa-color-success-50)', prefer: 'var(--wa-color-brand-50)', prefer_not: 'var(--wa-color-warning-50)', must_not: 'var(--wa-color-danger-50)' };
     const kindOrder = { must: 0, prefer: 1, prefer_not: 2, must_not: 3 };
-    const isPositive = kind => kind === 'must' || kind === 'prefer';
     const capitalize = s => s.charAt(0).toUpperCase() + s.slice(1);
 
     const conflictMap = {};
@@ -82,21 +81,7 @@ async function loadStudents() {
     }
     lastOveralls = allOveralls;
 
-    const mismatchList = [];
-    for (const s of students) {
-        for (const [bId, effA] of Object.entries(allOveralls[s.id])) {
-            if (!allOveralls[bId] || !allOveralls[bId][s.id]) continue;
-            const effB = allOveralls[bId][s.id];
-            if (isPositive(effA.kind) && !isPositive(effB.kind)) {
-                mismatchList.push({
-                    nameA: s.name,
-                    nameB: students.find(x => x.id === parseInt(bId)).name,
-                    kindA: effA.kind,
-                    kindB: effB.kind,
-                });
-            }
-        }
-    }
+    const mismatchList = constraintData.mismatches;
 
     const studentName = {};
     for (const s of students) studentName[s.id] = s.name;
@@ -219,10 +204,10 @@ async function loadStudents() {
         for (const m of mismatchList) {
             const div = document.createElement('div');
             div.className = 'conflict-row';
-            div.appendChild(document.createTextNode(m.nameA + ' \u2192 ' + m.nameB + ': '));
-            div.appendChild(kindSpan(m.kindA));
-            div.appendChild(document.createTextNode(' but ' + m.nameB + ' \u2192 ' + m.nameA + ': '));
-            div.appendChild(kindSpan(m.kindB));
+            div.appendChild(document.createTextNode(m.name_a + ' \u2192 ' + m.name_b + ': '));
+            div.appendChild(kindSpan(m.kind_a));
+            div.appendChild(document.createTextNode(' but ' + m.name_b + ' \u2192 ' + m.name_a + ': '));
+            div.appendChild(kindSpan(m.kind_b));
             det.appendChild(div);
         }
         mismatchesEl.appendChild(det);
