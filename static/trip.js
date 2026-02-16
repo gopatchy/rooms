@@ -24,64 +24,71 @@ async function loadStudents() {
     for (const student of students) {
         const card = document.createElement('wa-card');
 
-        const header = document.createElement('div');
-        header.className = 'student-header';
+        const nameRow = document.createElement('div');
+        nameRow.style.display = 'flex';
+        nameRow.style.alignItems = 'center';
         const label = document.createElement('span');
+        label.className = 'student-name';
+        label.style.flex = '1';
         label.textContent = student.name + ' (' + student.email + ')';
-        const deleteBtn = document.createElement('wa-button');
-        deleteBtn.size = 'small';
-        deleteBtn.variant = 'danger';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'close-btn';
         deleteBtn.textContent = '\u00d7';
         deleteBtn.addEventListener('click', async () => {
             if (!confirm('Remove student "' + student.name + '"?')) return;
             await api('DELETE', '/api/trips/' + tripID + '/students/' + student.id);
             loadStudents();
         });
-        header.appendChild(label);
-        header.appendChild(deleteBtn);
-        card.appendChild(header);
+        nameRow.appendChild(label);
+        nameRow.appendChild(deleteBtn);
+        card.appendChild(nameRow);
 
+        const details = document.createElement('wa-details');
+        details.summary = 'Parents';
+
+        const tags = document.createElement('div');
+        tags.className = 'tags';
         for (const parent of student.parents) {
-            const row = document.createElement('div');
-            row.className = 'parent-row';
-            const span = document.createElement('span');
-            span.textContent = parent.email;
-            const removeBtn = document.createElement('wa-button');
-            removeBtn.size = 'small';
-            removeBtn.variant = 'text';
-            removeBtn.textContent = '\u00d7';
-            removeBtn.addEventListener('click', async () => {
+            const tag = document.createElement('wa-tag');
+            tag.size = 'small';
+            tag.variant = 'success';
+            tag.setAttribute('with-remove', '');
+            tag.textContent = parent.email;
+            tag.addEventListener('wa-remove', async () => {
                 await api('DELETE', '/api/trips/' + tripID + '/students/' + student.id + '/parents/' + parent.id);
                 loadStudents();
             });
-            row.appendChild(span);
-            row.appendChild(removeBtn);
-            card.appendChild(row);
+            tags.appendChild(tag);
         }
+        details.appendChild(tags);
 
-        const addRow = document.createElement('div');
-        addRow.className = 'add-row';
         const input = document.createElement('wa-input');
-        input.placeholder = 'Parent email';
+        input.placeholder = 'Add parent email';
         input.size = 'small';
-        const addBtn = document.createElement('wa-button');
-        addBtn.size = 'small';
+        input.className = 'email';
+        input.style.marginTop = '0.3rem';
+        const addBtn = document.createElement('button');
+        addBtn.slot = 'end';
+        addBtn.className = 'input-action';
         addBtn.textContent = '+';
-        addBtn.addEventListener('click', async () => {
+        const doAdd = async () => {
             const email = input.value.trim();
             if (!email) return;
             await api('POST', '/api/trips/' + tripID + '/students/' + student.id + '/parents', { email });
             loadStudents();
-        });
-        addRow.appendChild(input);
-        addRow.appendChild(addBtn);
-        card.appendChild(addRow);
+        };
+        addBtn.addEventListener('click', doAdd);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+        input.appendChild(addBtn);
+        details.appendChild(input);
+
+        card.appendChild(details);
 
         container.appendChild(card);
     }
 }
 
-document.getElementById('add-student-btn').addEventListener('click', async () => {
+async function addStudent() {
     const nameInput = document.getElementById('new-student-name');
     const emailInput = document.getElementById('new-student-email');
     const name = nameInput.value.trim();
@@ -91,8 +98,12 @@ document.getElementById('add-student-btn').addEventListener('click', async () =>
     nameInput.value = '';
     emailInput.value = '';
     loadStudents();
-});
+}
+
+document.getElementById('add-student-btn').addEventListener('click', addStudent);
+document.getElementById('new-student-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
+document.getElementById('new-student-email').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
 
 await loadStudents();
-await customElements.whenDefined('wa-button');
+await customElements.whenDefined('wa-card');
 document.body.style.opacity = 1;

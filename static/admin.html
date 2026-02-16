@@ -13,6 +13,7 @@
             opacity: 0;
             font-size: 0.9rem;
         }
+        a { color: inherit; text-decoration: none; }
         .header {
             display: flex;
             align-items: center;
@@ -21,18 +22,39 @@
         }
         .header img { width: 32px; height: 32px; border-radius: 50%; }
         .header .spacer { flex: 1; }
-        h2 { margin: 0.75rem 0 0.25rem; font-size: 1.1rem; }
-        wa-card { margin-bottom: 0.5rem; display: block; --spacing: 0.6rem; }
-        wa-button::part(base) { padding: 0.15rem 0.4rem; min-height: 0; }
-        wa-button[size="small"]::part(base) { font-size: 0.8rem; }
+        h2 { margin: 0.75rem 0 0.5rem; font-size: 1.1rem; }
+        wa-card { margin-bottom: 0.5rem; display: block; --spacing: 0.6rem; --border-width: 0; --border-radius: 0.5rem; }
+        wa-card::part(base) { background: var(--wa-color-neutral-50); }
         wa-input::part(base) { min-height: 0; }
-        .trip-header { display: flex; align-items: center; gap: 0.25rem; }
-        .trip-header h3 { flex: 1; margin: 0; font-size: 1rem; }
-        .admin-row { display: flex; align-items: center; gap: 0.25rem; }
-        .add-row { display: flex; gap: 0.25rem; margin-top: 0.25rem; }
-        .add-row wa-input { flex: 1; }
-        .create-trip { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
-        .create-trip wa-input { flex: 1; }
+        wa-details { margin-top: 0.5rem; font-size: 1rem; --spacing: 0.6rem; }
+        wa-card wa-details { font-size: 0.8rem; }
+        wa-details::part(summary) { font-weight: bold; }
+        wa-details::part(content) { padding-top: 0.2rem; }
+        .trip-name { font-weight: bold; font-size: 1rem; color: var(--wa-color-brand-60); }
+        .tags { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+        wa-tag { transition: opacity var(--wa-transition-normal); }
+        wa-input.email { max-width: 20rem; }
+        .add-form { display: flex; flex-direction: column; gap: 0.3rem; max-width: 20rem; }
+        .add-form wa-button { align-self: flex-start; }
+        .input-action {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            opacity: 0.4;
+            padding: 0 0.2rem;
+        }
+        .input-action:hover { opacity: 1; }
+        .close-btn {
+            all: unset;
+            cursor: pointer;
+            opacity: 0;
+            padding: 0 0.3rem;
+            font-size: 1rem;
+            line-height: 1;
+        }
+        wa-card:hover .close-btn { opacity: 0.25; }
+        .close-btn:hover { opacity: 1 !important; color: var(--wa-color-danger-50, #dc3545); }
     </style>
 </head>
 <body>
@@ -44,13 +66,14 @@
             <span class="spacer"></span>
             <wa-button variant="neutral" size="small" id="logout-btn">Switch User</wa-button>
         </div>
-        <h2>Create Trip</h2>
-        <div class="create-trip">
-            <wa-input id="new-trip-name" placeholder="Trip name" size="small"></wa-input>
-            <wa-button size="small" id="create-trip-btn">+</wa-button>
-        </div>
         <h2>Trips</h2>
         <div id="trips"></div>
+        <wa-details summary="New Trip">
+            <div class="add-form">
+                <wa-input id="new-trip-name" placeholder="Trip name" size="small"></wa-input>
+                <wa-button size="small" id="create-trip-btn">Add Trip</wa-button>
+            </div>
+        </wa-details>
     </div>
     <script type="module" src="/admin.js"></script>
 </body>

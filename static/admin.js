@@ -25,75 +25,82 @@ async function loadTrips() {
     for (const trip of trips) {
         const card = document.createElement('wa-card');
 
-        const header = document.createElement('div');
-        header.className = 'trip-header';
-        const h3 = document.createElement('h3');
+        const nameRow = document.createElement('div');
+        nameRow.style.display = 'flex';
+        nameRow.style.alignItems = 'center';
         const tripLink = document.createElement('a');
         tripLink.href = '/trip/' + trip.id;
         tripLink.textContent = trip.name;
-        h3.appendChild(tripLink);
-        const deleteBtn = document.createElement('wa-button');
-        deleteBtn.size = 'small';
-        deleteBtn.variant = 'danger';
+        tripLink.className = 'trip-name';
+        tripLink.style.flex = '1';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'close-btn';
         deleteBtn.textContent = '\u00d7';
         deleteBtn.addEventListener('click', async () => {
             if (!confirm('Delete trip "' + trip.name + '"?')) return;
             await api('DELETE', '/api/trips/' + trip.id);
             loadTrips();
         });
-        header.appendChild(h3);
-        header.appendChild(deleteBtn);
-        card.appendChild(header);
+        nameRow.appendChild(tripLink);
+        nameRow.appendChild(deleteBtn);
+        card.appendChild(nameRow);
 
+        const details = document.createElement('wa-details');
+        details.summary = 'Admins';
+
+        const tags = document.createElement('div');
+        tags.className = 'tags';
         for (const admin of trip.admins) {
-            const row = document.createElement('div');
-            row.className = 'admin-row';
-            const span = document.createElement('span');
-            span.textContent = admin.email;
-            const removeBtn = document.createElement('wa-button');
-            removeBtn.size = 'small';
-            removeBtn.variant = 'text';
-            removeBtn.textContent = '\u00d7';
-            removeBtn.addEventListener('click', async () => {
+            const tag = document.createElement('wa-tag');
+            tag.size = 'small';
+            tag.variant = 'brand';
+            tag.setAttribute('with-remove', '');
+            tag.textContent = admin.email;
+            tag.addEventListener('wa-remove', async () => {
                 await api('DELETE', '/api/trips/' + trip.id + '/admins/' + admin.id);
                 loadTrips();
             });
-            row.appendChild(span);
-            row.appendChild(removeBtn);
-            card.appendChild(row);
+            tags.appendChild(tag);
         }
+        details.appendChild(tags);
 
-        const addRow = document.createElement('div');
-        addRow.className = 'add-row';
         const input = document.createElement('wa-input');
-        input.placeholder = 'Admin email';
+        input.placeholder = 'Add admin email';
         input.size = 'small';
-        const addBtn = document.createElement('wa-button');
-        addBtn.size = 'small';
+        input.className = 'email';
+        input.style.marginTop = '0.3rem';
+        const addBtn = document.createElement('button');
+        addBtn.slot = 'end';
+        addBtn.className = 'input-action';
         addBtn.textContent = '+';
-        addBtn.addEventListener('click', async () => {
+        const doAdd = async () => {
             const email = input.value.trim();
             if (!email) return;
             await api('POST', '/api/trips/' + trip.id + '/admins', { email });
             loadTrips();
-        });
-        addRow.appendChild(input);
-        addRow.appendChild(addBtn);
-        card.appendChild(addRow);
+        };
+        addBtn.addEventListener('click', doAdd);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+        input.appendChild(addBtn);
+        details.appendChild(input);
 
+        card.appendChild(details);
         container.appendChild(card);
     }
 }
 
-document.getElementById('create-trip-btn').addEventListener('click', async () => {
+async function createTrip() {
     const input = document.getElementById('new-trip-name');
     const name = input.value.trim();
     if (!name) return;
     await api('POST', '/api/trips', { name });
     input.value = '';
     loadTrips();
-});
+}
+
+document.getElementById('create-trip-btn').addEventListener('click', createTrip);
+document.getElementById('new-trip-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') createTrip(); });
 
 await loadTrips();
-await customElements.whenDefined('wa-button');
+await customElements.whenDefined('wa-card');
 document.body.style.opacity = 1;
