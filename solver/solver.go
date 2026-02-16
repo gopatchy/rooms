@@ -141,7 +141,12 @@ func newSolverState(n int, roomSizes []int, pnMultiple, npCost int, constraints 
 	for _, members := range s.groups {
 		s.groupList = append(s.groupList, members)
 	}
-	slices.SortFunc(s.groupList, func(a, b []int) int { return len(b) - len(a) })
+	slices.SortFunc(s.groupList, func(a, b []int) int {
+		if len(b) != len(a) {
+			return len(b) - len(a)
+		}
+		return a[0] - b[0]
+	})
 
 	s.uniqueGroups = make([]int, 0, len(s.groups))
 	for root := range s.groups {
@@ -164,6 +169,9 @@ func newSolverState(n int, roomSizes []int, pnMultiple, npCost int, constraints 
 	for p := range s.mustApart {
 		s.mustApartFor[p[0]] = append(s.mustApartFor[p[0]], p[1])
 		s.mustApartFor[p[1]] = append(s.mustApartFor[p[1]], p[0])
+	}
+	for i := range s.mustApartFor {
+		slices.Sort(s.mustApartFor[i])
 	}
 
 	return s
@@ -469,15 +477,8 @@ func (s *solverState) initialPlacement(assignment []int) bool {
 			}
 			ok := true
 			for _, member := range grp {
-				for p := range s.mustApart {
-					partner := -1
-					if p[0] == member {
-						partner = p[1]
-					}
-					if p[1] == member {
-						partner = p[0]
-					}
-					if partner >= 0 && assignment[partner] == room {
+				for _, partner := range s.mustApartFor[member] {
+					if assignment[partner] == room {
 						alreadyPlaced := false
 						for gj := range gi {
 							if slices.Contains(s.groupList[gj], partner) {
@@ -526,15 +527,8 @@ func (s *solverState) randomPlacement(assignment []int, rng *rand.Rand) bool {
 			}
 			valid := true
 			for _, member := range grp {
-				for p := range s.mustApart {
-					partner := -1
-					if p[0] == member {
-						partner = p[1]
-					}
-					if p[1] == member {
-						partner = p[0]
-					}
-					if partner >= 0 && assignment[partner] == room {
+				for _, partner := range s.mustApartFor[member] {
+					if assignment[partner] == room {
 						valid = false
 						break
 					}
