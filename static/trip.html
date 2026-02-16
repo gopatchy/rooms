@@ -32,6 +32,7 @@
         .student-name { font-weight: bold; display: block; margin-bottom: 0.3rem; }
         .tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.3rem; }
         wa-tag { transition: opacity var(--wa-transition-normal); }
+        wa-tag::part(base) { padding: 0.15rem 0.4rem; }
         wa-input.email { max-width: 20rem; }
         .add-form { display: flex; flex-direction: column; gap: 0.3rem; max-width: 20rem; }
         .add-form wa-button { align-self: flex-start; }
@@ -60,6 +61,9 @@
         .constraint-level { font-size: 0.7rem; font-weight: bold; opacity: 0.6; }
         .constraint-add { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.3rem; }
         .constraint-add select { font-size: 0.75rem; padding: 0.15rem; border: 1px solid var(--wa-color-neutral-300, #ccc); border-radius: 0.25rem; }
+        #conflicts { margin-bottom: 0.5rem; }
+        .conflict-row { margin-bottom: 0.2rem; }
+        .conflict-icon { background: var(--wa-color-danger-50, #dc3545); color: white; border-radius: 0.15rem; padding: 0 0.15rem; font-size: 0.6rem; line-height: 1.2; vertical-align: middle; margin-right: 0.1rem; display: inline-block; }
     </style>
 </head>
 <body>
@@ -76,6 +80,7 @@
             <label for="room-size">Students per room:</label>
             <input id="room-size" type="number" min="1">
         </div>
+        <div id="conflicts"></div>
         <div id="students"></div>
         <wa-details summary="Add Student">
             <div class="add-form">

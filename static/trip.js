@@ -27,6 +27,70 @@ async function loadStudents() {
         api('GET', '/api/trips/' + tripID + '/students'),
         api('GET', '/api/trips/' + tripID + '/constraints')
     ]);
+    const kindLabels = { must: 'Must', prefer: 'Prefer', prefer_not: 'Prefer Not', must_not: 'Must Not' };
+    const kindVariant = { must: 'success', prefer: 'brand', prefer_not: 'warning', must_not: 'danger' };
+    const kindColor = { must: 'var(--wa-color-success-50)', prefer: 'var(--wa-color-brand-50)', prefer_not: 'var(--wa-color-warning-50)', must_not: 'var(--wa-color-danger-50)' };
+    const kindOrder = { must: 0, prefer: 1, prefer_not: 2, must_not: 3 };
+    const isPositive = kind => kind === 'must' || kind === 'prefer';
+    const capitalize = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+    const pairs = {};
+    for (const c of constraints) {
+        const k = c.student_a_id + '-' + c.student_b_id;
+        if (!pairs[k]) pairs[k] = [];
+        pairs[k].push(c);
+    }
+    const conflictList = [];
+    const conflictMap = {};
+    for (const group of Object.values(pairs)) {
+        const pos = group.filter(c => isPositive(c.kind));
+        const neg = group.filter(c => !isPositive(c.kind));
+        if (pos.length === 0 || neg.length === 0) continue;
+        conflictList.push({
+            names: group[0].student_a_name + ' \u2192 ' + group[0].student_b_name,
+            positives: pos.map(c => ({ level: c.level, kind: c.kind })),
+            negatives: neg.map(c => ({ level: c.level, kind: c.kind }))
+        });
+        for (const c of group) {
+            const opposing = isPositive(c.kind) ? neg : pos;
+            conflictMap[c.id] = opposing.map(o => capitalize(o.level) + ' says ' + kindLabels[o.kind]).join(', ');
+        }
+    }
+
+    const conflictsEl = document.getElementById('conflicts');
+    const conflictsWasOpen = conflictsEl.querySelector('wa-details')?.open;
+    conflictsEl.innerHTML = '';
+    if (conflictList.length > 0) {
+        const det = document.createElement('wa-details');
+        det.summary = '\u26a0 Overrides (' + conflictList.length + ')';
+        if (conflictsWasOpen) det.open = true;
+        const kindSpan = (kind) => {
+            const span = document.createElement('span');
+            span.textContent = kindLabels[kind];
+            span.style.color = kindColor[kind];
+            span.style.fontWeight = 'bold';
+            return span;
+        };
+        for (const conflict of conflictList) {
+            const div = document.createElement('div');
+            div.className = 'conflict-row';
+            div.appendChild(document.createTextNode(conflict.names + ': '));
+            conflict.positives.forEach((p, i) => {
+                if (i > 0) div.appendChild(document.createTextNode(', '));
+                div.appendChild(document.createTextNode(capitalize(p.level) + ' '));
+                div.appendChild(kindSpan(p.kind));
+            });
+            div.appendChild(document.createTextNode(' vs '));
+            conflict.negatives.forEach((n, i) => {
+                if (i > 0) div.appendChild(document.createTextNode(', '));
+                div.appendChild(document.createTextNode(capitalize(n.level) + ' '));
+                div.appendChild(kindSpan(n.kind));
+            });
+            det.appendChild(div);
+        }
+        conflictsEl.appendChild(det);
+    }
+
     const container = document.getElementById('students');
     const openStates = {};
     for (const card of container.children) {
@@ -103,9 +167,6 @@ async function loadStudents() {
         const cDetails = document.createElement('wa-details');
         cDetails.summary = 'Constraints';
 
-        const kindVariant = { must: 'success', prefer: 'brand', prefer_not: 'warning', must_not: 'danger' };
-        const kindLabels = { must: 'Must', prefer: 'Prefer', prefer_not: 'Prefer Not', must_not: 'Must Not' };
-        const kindOrder = { must: 0, prefer: 1, prefer_not: 2, must_not: 3 };
         const myConstraints = constraints.filter(c => c.student_a_id === student.id || c.student_b_id === student.id);
 
         for (const level of ['admin', 'parent', 'student']) {
@@ -130,11 +191,20 @@ async function loadStudents() {
                 tag.size = 'small';
                 tag.variant = kindVariant[c.kind];
                 tag.setAttribute('with-remove', '');
-                tag.textContent = kindLabels[c.kind] + ': ' + otherName;
                 tag.addEventListener('wa-remove', async () => {
                     await api('DELETE', '/api/trips/' + tripID + '/constraints/' + c.id);
                     loadStudents();
                 });
+                if (conflictMap[c.id]) {
+                    const icon = document.createElement('span');
+                    icon.className = 'conflict-icon';
+                    icon.textContent = '\u26a0 ';
+                    tag.appendChild(icon);
+                    tag.appendChild(document.createTextNode(kindLabels[c.kind] + ': ' + otherName));
+                    tag.title = 'Overrides: ' + conflictMap[c.id];
+                } else {
+                    tag.textContent = kindLabels[c.kind] + ': ' + otherName;
+                }
                 group.appendChild(tag);
             }
             cDetails.appendChild(group);

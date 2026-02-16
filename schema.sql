@@ -1,6 +1,3 @@
-DROP TABLE IF EXISTS roommate_constraints;
-DROP TYPE IF EXISTS constraint_kind;
-
 DO $$ BEGIN
     CREATE TYPE constraint_kind AS ENUM ('must', 'prefer', 'prefer_not', 'must_not');
 EXCEPTION WHEN duplicate_object THEN NULL;
