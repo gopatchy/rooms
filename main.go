@@ -1218,7 +1218,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			})
 		}
 
-		rng := rand.New(rand.NewSource(rand.Int63()))
+		rng := rand.New(rand.NewSource(42))
 		solutions := solver.SolveFast(n, roomSize, pnMultiple, npCost, constraints, solver.DefaultParams, rng)
 
 		if solutions == nil {
