@@ -111,7 +111,7 @@ func envMap() map[string]string {
 func serveHTML(name string) http.HandlerFunc {
 	t := htmlTemplates.Lookup(name)
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/html")
 		t.Execute(w, templateData())
 	}
@@ -120,7 +120,7 @@ func serveHTML(name string) http.HandlerFunc {
 func serveJS(name string) http.HandlerFunc {
 	t := jsTemplates.Lookup(name)
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "application/javascript")
 		t.Execute(w, templateData())
 	}
