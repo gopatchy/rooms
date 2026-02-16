@@ -432,18 +432,21 @@ async function loadStudents() {
         levelSelect.value = 'student';
         const kindSelect = document.createElement('wa-select');
         kindSelect.size = 'small';
-        const updateKinds = (level) => {
-            kindSelect.querySelectorAll('wa-option').forEach(o => o.remove());
+        const updateKinds = async (level) => {
+            kindSelect.innerHTML = '';
             for (const kind of levelKinds[level]) {
                 const opt = document.createElement('wa-option');
                 opt.value = kind;
                 opt.textContent = kindLabels[kind];
                 kindSelect.appendChild(opt);
             }
-            requestAnimationFrame(() => { kindSelect.value = levelKinds[level][0]; });
+            await kindSelect.updateComplete;
+            kindSelect.value = levelKinds[level][0];
         };
         updateKinds('student');
-        levelSelect.addEventListener('wa-change', (e) => updateKinds(e.target.value));
+        levelSelect.addEventListener('change', (e) => {
+            updateKinds(e.target.value);
+        });
         const studentSelect = document.createElement('wa-select');
         studentSelect.size = 'small';
         studentSelect.placeholder = 'Student\u2026';
@@ -473,18 +476,20 @@ async function loadStudents() {
             if (card) {
                 const selects = card.querySelectorAll('.constraint-add wa-select');
                 if (selects[0]) {
-                    requestAnimationFrame(() => { selects[0].value = savedLevel; });
+                    await selects[0].updateComplete;
+                    selects[0].value = savedLevel;
                 }
                 if (selects[1]) {
+                    selects[1].innerHTML = '';
                     const kinds = levelKinds[savedLevel];
-                    selects[1].querySelectorAll('wa-option').forEach(o => o.remove());
                     for (const kind of kinds) {
                         const opt = document.createElement('wa-option');
                         opt.value = kind;
                         opt.textContent = kindLabels[kind];
                         selects[1].appendChild(opt);
                     }
-                    requestAnimationFrame(() => { selects[1].value = savedKind; });
+                    await selects[1].updateComplete;
+                    selects[1].value = savedKind;
                 }
             }
         });
