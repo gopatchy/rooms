@@ -541,55 +541,33 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
                 renderRoomCard(room, container, roomNum++, true);
             }
 
-            for (const group of swapGroups) {
+            for (let gi = 0; gi < swapGroups.length; gi++) {
+                const group = swapGroups[gi];
+                const prefix = String.fromCharCode('A'.charCodeAt(0) + gi);
                 const section = document.createElement('div');
                 section.className = 'swap-group';
-
-                let current = 0;
-                const roomsDiv = document.createElement('div');
                 const baseRoomNum = roomNum;
 
-                const render = () => {
-                    roomsDiv.innerHTML = '';
+                const tabGroup = document.createElement('wa-tab-group');
+                for (let ci = 0; ci < group.configs.length; ci++) {
+                    const tab = document.createElement('wa-tab');
+                    tab.slot = 'nav';
+                    tab.panel = 'sg-' + gi + '-' + ci;
+                    tab.textContent = prefix + (ci + 1);
+                    tabGroup.appendChild(tab);
+                }
+                for (let ci = 0; ci < group.configs.length; ci++) {
+                    const panel = document.createElement('wa-tab-panel');
+                    panel.name = 'sg-' + gi + '-' + ci;
                     let rn = baseRoomNum;
-                    for (const room of group.configs[current]) {
-                        renderRoomCard(room, roomsDiv, rn++, false);
+                    for (const room of group.configs[ci]) {
+                        renderRoomCard(room, panel, rn++, false);
                     }
-                };
+                    tabGroup.appendChild(panel);
+                }
 
-                const nav = document.createElement('div');
-                nav.className = 'swap-group-nav';
-                const prevBtn = document.createElement('wa-button');
-                prevBtn.size = 'small';
-                prevBtn.variant = 'text';
-                prevBtn.textContent = '\u25c0';
-                const lbl = document.createElement('span');
-                lbl.className = 'swap-group-label';
-                lbl.textContent = '1 of ' + group.configs.length;
-                const nextBtn = document.createElement('wa-button');
-                nextBtn.size = 'small';
-                nextBtn.variant = 'text';
-                nextBtn.textContent = '\u25b6';
-
-                prevBtn.addEventListener('click', () => {
-                    current = (current - 1 + group.configs.length) % group.configs.length;
-                    lbl.textContent = (current + 1) + ' of ' + group.configs.length;
-                    render();
-                });
-                nextBtn.addEventListener('click', () => {
-                    current = (current + 1) % group.configs.length;
-                    lbl.textContent = (current + 1) + ' of ' + group.configs.length;
-                    render();
-                });
-
-                nav.appendChild(prevBtn);
-                nav.appendChild(lbl);
-                nav.appendChild(nextBtn);
-                section.appendChild(nav);
-                section.appendChild(roomsDiv);
+                section.appendChild(tabGroup);
                 container.appendChild(section);
-
-                render();
                 roomNum += group.configs[0].length;
             }
         }
