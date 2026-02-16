@@ -102,5 +102,5 @@ document.getElementById('create-trip-btn').addEventListener('click', createTrip)
 document.getElementById('new-trip-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') createTrip(); });
 
 await loadTrips();
-await customElements.whenDefined('wa-card');
+await customElements.whenDefined('wa-button');
 document.body.style.opacity = 1;

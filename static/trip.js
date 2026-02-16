@@ -224,5 +224,5 @@ document.getElementById('new-student-name').addEventListener('keydown', (e) => {
 document.getElementById('new-student-email').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
 
 await loadStudents();
-await customElements.whenDefined('wa-card');
+await customElements.whenDefined('wa-button');
 document.body.style.opacity = 1;
