@@ -597,7 +597,7 @@ async function renderMemberView(me) {
 
     const kindLabels = me.role === 'student'
         ? { '': 'OK', prefer: 'Prefer', prefer_not: 'Prefer Not' }
-        : { '': 'OK', must_not: 'Must Not' };
+        : { '': 'OK to room with', must_not: 'Not OK to room with' };
 
     const kindOptions = ['', ...me.level_kinds[me.role]];
 
