@@ -525,7 +525,15 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
             for (const member of result.rooms[i]) {
                 const tag = document.createElement('wa-tag');
                 tag.size = 'small';
+                tag.style.cursor = 'pointer';
                 tag.textContent = member.name;
+                tag.addEventListener('click', () => {
+                    const card = document.querySelector('[data-student-id="' + member.id + '"]');
+                    if (!card) return;
+                    const cDet = [...card.querySelectorAll('wa-details')].find(d => d.summary === 'Constraints');
+                    if (cDet) cDet.open = true;
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
                 tags.appendChild(tag);
             }
             card.appendChild(tags);
