@@ -169,6 +169,43 @@ async function loadStudents() {
 
         const myConstraints = constraints.filter(c => c.student_a_id === student.id || c.student_b_id === student.id);
 
+        const byPeer = {};
+        for (const c of myConstraints) {
+            const otherId = c.student_a_id === student.id ? c.student_b_id : c.student_a_id;
+            if (!byPeer[otherId]) byPeer[otherId] = {};
+            byPeer[otherId][c.level] = c;
+        }
+        const overall = [];
+        for (const levels of Object.values(byPeer)) {
+            const eff = levels.admin || levels.parent || levels.student;
+            if (eff) overall.push(eff);
+        }
+        if (overall.length > 0) {
+            overall.sort((a, b) => {
+                const kd = kindOrder[a.kind] - kindOrder[b.kind];
+                if (kd !== 0) return kd;
+                const na = a.student_a_id === student.id ? a.student_b_name : a.student_a_name;
+                const nb = b.student_a_id === student.id ? b.student_b_name : b.student_a_name;
+                return na.localeCompare(nb);
+            });
+            const group = document.createElement('div');
+            group.className = 'constraint-group';
+            const levelLabel = document.createElement('span');
+            levelLabel.className = 'constraint-level';
+            levelLabel.textContent = 'Overall';
+            group.appendChild(levelLabel);
+            for (const c of overall) {
+                const otherName = c.student_a_id === student.id ? c.student_b_name : c.student_a_name;
+                const tag = document.createElement('wa-tag');
+                tag.size = 'small';
+                tag.variant = kindVariant[c.kind];
+                tag.textContent = kindLabels[c.kind] + ': ' + otherName;
+                tag.title = 'From ' + capitalize(c.level);
+                group.appendChild(tag);
+            }
+            cDetails.appendChild(group);
+        }
+
         for (const level of ['admin', 'parent', 'student']) {
             const lc = myConstraints.filter(c => c.level === level);
             if (lc.length === 0) continue;
