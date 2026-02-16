@@ -541,7 +541,10 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
                 tag.size = 'small';
                 tag.style.cursor = 'pointer';
                 const hasViolation = violations.some(v => v.from === member.name || v.to === member.name);
-                if (hasViolation) tag.variant = 'warning';
+                const hasPrefers = Object.values(lastOveralls[member.id] || {}).some(e => e.kind === 'prefer');
+                const gotPrefer = hasPrefers && roomIDs.some(rid => rid !== member.id && lastOveralls[member.id]?.[rid]?.kind === 'prefer');
+                if (hasViolation) tag.variant = 'danger';
+                else if (hasPrefers && !gotPrefer) tag.variant = 'warning';
                 tag.textContent = member.name;
                 tag.addEventListener('click', () => {
                     const card = document.querySelector('[data-student-id="' + member.id + '"]');
