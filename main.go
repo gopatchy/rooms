@@ -1152,7 +1152,7 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 
 		if len(studentIDs) == 0 {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"rooms": []any{}, "score": 0})
+			json.NewEncoder(w).Encode(map[string]any{"solutions": []any{}})
 			return
 		}
 
@@ -1360,9 +1360,47 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		initialAssignment := make([]int, n)
 		copy(initialAssignment, assignment)
 
-		bestAssignment := make([]int, n)
-		copy(bestAssignment, assignment)
 		bestScore := score(assignment)
+		var bestSolutions [][]int
+		seen := map[string]bool{}
+		normalizeKey := func(a []int) string {
+			rm := map[int][]int{}
+			for i, room := range a {
+				rm[room] = append(rm[room], i)
+			}
+			var gs [][]int
+			for _, members := range rm {
+				slices.Sort(members)
+				gs = append(gs, members)
+			}
+			slices.SortFunc(gs, func(a, b []int) int { return a[0] - b[0] })
+			var buf strings.Builder
+			for _, g := range gs {
+				for i, m := range g {
+					if i > 0 {
+						buf.WriteByte(',')
+					}
+					buf.WriteString(strconv.Itoa(m))
+				}
+				buf.WriteByte(';')
+			}
+			return buf.String()
+		}
+		addSolution := func(a []int, s int) {
+			if s > bestScore {
+				bestScore = s
+				bestSolutions = nil
+				seen = map[string]bool{}
+			}
+			if s == bestScore {
+				key := normalizeKey(a)
+				if !seen[key] {
+					seen[key] = true
+					bestSolutions = append(bestSolutions, slices.Clone(a))
+				}
+			}
+		}
+		addSolution(assignment, bestScore)
 
 		roomCount := func(a []int, room int) int {
 			c := 0
@@ -1498,50 +1536,57 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 		}
 
 		copy(assignment, initialAssignment)
-		s := hillClimb(assignment)
-		if s > bestScore {
-			bestScore = s
-			copy(bestAssignment, assignment)
-		}
+		addSolution(assignment, hillClimb(assignment))
 
 		for range 30 {
 			if randomPlacement() {
-				s := hillClimb(assignment)
-				if s > bestScore {
-					bestScore = s
-					copy(bestAssignment, assignment)
-				}
+				addSolution(assignment, hillClimb(assignment))
 			}
 		}
 
 		for range 200 {
-			perturb(bestAssignment, 2+rand.Intn(3))
-			s := hillClimb(assignment)
-			if s > bestScore {
-				bestScore = s
-				copy(bestAssignment, assignment)
-			}
+			src := bestSolutions[rand.Intn(len(bestSolutions))]
+			perturb(src, 2+rand.Intn(3))
+			addSolution(assignment, hillClimb(assignment))
 		}
 
 		type roomMember struct {
 			ID   int64  `json:"id"`
 			Name string `json:"name"`
 		}
-		roomMap := map[int][]roomMember{}
-		for i, room := range bestAssignment {
-			sid := studentIDs[i]
-			roomMap[room] = append(roomMap[room], roomMember{ID: sid, Name: studentName[sid]})
+		type solutionResult struct {
+			Rooms [][]roomMember `json:"rooms"`
+			Score int            `json:"score"`
 		}
-		var rooms [][]roomMember
-		for room := range numRooms {
-			if members, ok := roomMap[room]; ok {
-				slices.SortFunc(members, func(a, b roomMember) int { return strings.Compare(a.Name, b.Name) })
-				rooms = append(rooms, members)
+		var results []solutionResult
+		for _, sol := range bestSolutions {
+			roomMap := map[int][]roomMember{}
+			for i, room := range sol {
+				sid := studentIDs[i]
+				roomMap[room] = append(roomMap[room], roomMember{ID: sid, Name: studentName[sid]})
 			}
+			var rooms [][]roomMember
+			for room := range numRooms {
+				if members, ok := roomMap[room]; ok {
+					slices.SortFunc(members, func(a, b roomMember) int { return strings.Compare(a.Name, b.Name) })
+					rooms = append(rooms, members)
+				}
+			}
+			slices.SortFunc(rooms, func(a, b []roomMember) int { return strings.Compare(a[0].Name, b[0].Name) })
+			results = append(results, solutionResult{Rooms: rooms, Score: bestScore})
 		}
-		slices.SortFunc(rooms, func(a, b []roomMember) int { return strings.Compare(a[0].Name, b[0].Name) })
+		slices.SortFunc(results, func(a, b solutionResult) int {
+			for i := range min(len(a.Rooms), len(b.Rooms)) {
+				for j := range min(len(a.Rooms[i]), len(b.Rooms[i])) {
+					if c := strings.Compare(a.Rooms[i][j].Name, b.Rooms[i][j].Name); c != 0 {
+						return c
+					}
+				}
+			}
+			return 0
+		})
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"rooms": rooms, "score": bestScore})
+		json.NewEncoder(w).Encode(map[string]any{"solutions": results})
 	}
 }

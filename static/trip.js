@@ -422,60 +422,84 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
         const result = await api('POST', '/api/trips/' + tripID + '/solve');
         const container = document.getElementById('solver-results');
         container.innerHTML = '';
-        for (let i = 0; i < result.rooms.length; i++) {
-            const card = document.createElement('wa-card');
-            card.className = 'room-card';
-            const label = document.createElement('div');
-            label.className = 'room-label';
-            label.textContent = 'Room ' + (i + 1);
-            card.appendChild(label);
-            const tags = document.createElement('div');
-            tags.className = 'tags';
-            const roomIDs = result.rooms[i].map(m => m.id);
-            const violations = [];
-            for (const a of result.rooms[i]) {
-                for (const b of result.rooms[i]) {
-                    if (a.id === b.id) continue;
-                    const eff = lastOveralls[a.id]?.[b.id];
-                    if (eff && eff.kind === 'prefer_not') {
-                        violations.push({ from: a.name, to: b.name });
+
+        const renderSolution = (sol, parent) => {
+            for (let i = 0; i < sol.rooms.length; i++) {
+                const card = document.createElement('wa-card');
+                card.className = 'room-card';
+                const label = document.createElement('div');
+                label.className = 'room-label';
+                label.textContent = 'Room ' + (i + 1);
+                card.appendChild(label);
+                const tags = document.createElement('div');
+                tags.className = 'tags';
+                const roomIDs = sol.rooms[i].map(m => m.id);
+                const violations = [];
+                for (const a of sol.rooms[i]) {
+                    for (const b of sol.rooms[i]) {
+                        if (a.id === b.id) continue;
+                        const eff = lastOveralls[a.id]?.[b.id];
+                        if (eff && eff.kind === 'prefer_not') {
+                            violations.push({ from: a.name, to: b.name });
+                        }
                     }
                 }
+                for (const member of sol.rooms[i]) {
+                    const tag = document.createElement('wa-tag');
+                    tag.size = 'small';
+                    tag.style.cursor = 'pointer';
+                    const hasViolation = violations.some(v => v.from === member.name || v.to === member.name);
+                    const hasPrefers = Object.values(lastOveralls[member.id] || {}).some(e => e.kind === 'prefer');
+                    const gotPrefer = hasPrefers && roomIDs.some(rid => rid !== member.id && lastOveralls[member.id]?.[rid]?.kind === 'prefer');
+                    if (hasViolation) tag.variant = 'danger';
+                    else if (hasPrefers && !gotPrefer) tag.variant = 'warning';
+                    tag.textContent = member.name;
+                    tag.addEventListener('click', () => {
+                        const studentCard = document.querySelector('[data-student-id="' + member.id + '"]');
+                        if (!studentCard) return;
+                        const cDet = [...studentCard.querySelectorAll('wa-details')].find(d => d.summary === 'Constraints');
+                        if (cDet) cDet.open = true;
+                        studentCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    });
+                    tags.appendChild(tag);
+                }
+                if (violations.length > 0) {
+                    const warn = document.createElement('div');
+                    warn.style.fontSize = '0.75rem';
+                    warn.style.color = 'var(--wa-color-warning-50)';
+                    warn.textContent = violations.map(v => v.from + ' \u2192 ' + v.to).join(', ');
+                    card.appendChild(tags);
+                    card.appendChild(warn);
+                } else {
+                    card.appendChild(tags);
+                }
+                parent.appendChild(card);
             }
-            for (const member of result.rooms[i]) {
-                const tag = document.createElement('wa-tag');
-                tag.size = 'small';
-                tag.style.cursor = 'pointer';
-                const hasViolation = violations.some(v => v.from === member.name || v.to === member.name);
-                const hasPrefers = Object.values(lastOveralls[member.id] || {}).some(e => e.kind === 'prefer');
-                const gotPrefer = hasPrefers && roomIDs.some(rid => rid !== member.id && lastOveralls[member.id]?.[rid]?.kind === 'prefer');
-                if (hasViolation) tag.variant = 'danger';
-                else if (hasPrefers && !gotPrefer) tag.variant = 'warning';
-                tag.textContent = member.name;
-                tag.addEventListener('click', () => {
-                    const card = document.querySelector('[data-student-id="' + member.id + '"]');
-                    if (!card) return;
-                    const cDet = [...card.querySelectorAll('wa-details')].find(d => d.summary === 'Constraints');
-                    if (cDet) cDet.open = true;
-                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                });
-                tags.appendChild(tag);
+        };
+
+        const solutions = result.solutions;
+        if (solutions.length === 1) {
+            renderSolution(solutions[0], container);
+        } else if (solutions.length > 1) {
+            const tabGroup = document.createElement('wa-tab-group');
+            for (let si = 0; si < solutions.length; si++) {
+                const tab = document.createElement('wa-tab');
+                tab.slot = 'nav';
+                tab.panel = 'sol-' + si;
+                tab.textContent = 'Option ' + (si + 1);
+                tabGroup.appendChild(tab);
             }
-            if (violations.length > 0) {
-                const warn = document.createElement('div');
-                warn.style.fontSize = '0.75rem';
-                warn.style.color = 'var(--wa-color-warning-50)';
-                warn.textContent = violations.map(v => v.from + ' \u2192 ' + v.to).join(', ');
-                card.appendChild(tags);
-                card.appendChild(warn);
-            } else {
-                card.appendChild(tags);
+            for (let si = 0; si < solutions.length; si++) {
+                const panel = document.createElement('wa-tab-panel');
+                panel.name = 'sol-' + si;
+                renderSolution(solutions[si], panel);
+                tabGroup.appendChild(panel);
             }
-            container.appendChild(card);
+            container.appendChild(tabGroup);
         }
         const scoreDiv = document.createElement('div');
         scoreDiv.className = 'solver-score';
-        scoreDiv.textContent = 'Score: ' + result.score;
+        scoreDiv.textContent = 'Score: ' + (solutions[0]?.score ?? 0) + (solutions.length > 1 ? ' (' + solutions.length + ' options)' : '');
         container.appendChild(scoreDiv);
     } catch (e) {
         const container = document.getElementById('solver-results');
