@@ -423,10 +423,11 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
         const container = document.getElementById('solver-results');
         container.innerHTML = '';
 
-        const renderSolution = (sol, parent) => {
+        const renderSolution = (sol, parent, lockedRooms) => {
             for (let i = 0; i < sol.rooms.length; i++) {
+                const key = sol.rooms[i].map(m => m.id).sort((a, b) => a - b).join(',');
                 const card = document.createElement('wa-card');
-                card.className = 'room-card';
+                card.className = 'room-card' + (lockedRooms.has(key) ? ' room-locked' : '');
                 const label = document.createElement('div');
                 label.className = 'room-label';
                 label.textContent = 'Room ' + (i + 1);
@@ -478,8 +479,14 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
         };
 
         const solutions = result.solutions;
+        let lockedRooms = new Set();
+        if (solutions.length > 1) {
+            const roomKey = (room) => room.map(m => m.id).sort((a, b) => a - b).join(',');
+            const sets = solutions.map(sol => new Set(sol.rooms.map(roomKey)));
+            lockedRooms = new Set([...sets[0]].filter(k => sets.every(s => s.has(k))));
+        }
         if (solutions.length === 1) {
-            renderSolution(solutions[0], container);
+            renderSolution(solutions[0], container, lockedRooms);
         } else if (solutions.length > 1) {
             const optionLabel = (i) => {
                 const a = 'A'.charCodeAt(0);
@@ -496,7 +503,7 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
             for (let si = 0; si < solutions.length; si++) {
                 const panel = document.createElement('wa-tab-panel');
                 panel.name = 'sol-' + si;
-                renderSolution(solutions[si], panel);
+                renderSolution(solutions[si], panel, lockedRooms);
                 tabGroup.appendChild(panel);
             }
             container.appendChild(tabGroup);
