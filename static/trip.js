@@ -611,12 +611,12 @@ async function renderMemberView(me) {
     const container = document.getElementById('member-students');
 
     const kindLabels = me.role === 'student'
-        ? { '': 'OK to room with', prefer: 'Would like to room with', prefer_not: 'Would prefer not to room with' }
-        : { '': 'OK to room with', must_not: 'Not OK to room with' };
+        ? { '': 'OK', prefer: 'Prefer', prefer_not: 'Prefer Not' }
+        : { '': 'OK', must_not: 'Must Not' };
 
     const kindOptions = ['', ...me.level_kinds[me.role]];
 
-    const pendingSelects = [];
+    const pendingRadios = [];
 
     for (const myStudent of me.students) {
         const card = document.createElement('wa-card');
@@ -641,18 +641,20 @@ async function renderMemberView(me) {
             name.textContent = other.name;
             row.appendChild(name);
 
-            const select = document.createElement('wa-select');
-            select.size = 'small';
+            const group = document.createElement('wa-radio-group');
+            group.orientation = 'horizontal';
+            group.size = 'small';
             for (const kind of kindOptions) {
-                const opt = document.createElement('wa-option');
-                opt.value = kind;
-                opt.textContent = kindLabels[kind];
-                select.appendChild(opt);
+                const radio = document.createElement('wa-radio');
+                radio.value = kind;
+                radio.textContent = kindLabels[kind];
+                radio.setAttribute('appearance', 'button');
+                group.appendChild(radio);
             }
             const existing = myConstraints[other.id];
-            pendingSelects.push({ select, value: existing ? existing.kind : '' });
+            pendingRadios.push({ group, value: existing ? existing.kind : '' });
 
-            select.addEventListener('change', async (e) => {
+            group.addEventListener('change', async (e) => {
                 const val = e.target.value;
                 if (val === '') {
                     const c = myConstraints[other.id];
@@ -670,15 +672,15 @@ async function renderMemberView(me) {
                     myConstraints[other.id] = { id: result.id, kind: val, student_a_id: myStudent.id, student_b_id: other.id };
                 }
             });
-            row.appendChild(select);
+            row.appendChild(group);
             card.appendChild(row);
         }
         container.appendChild(card);
     }
 
-    await customElements.whenDefined('wa-select');
-    for (const { select, value } of pendingSelects) {
-        await select.updateComplete;
-        select.value = value;
+    await customElements.whenDefined('wa-radio-group');
+    for (const { group, value } of pendingRadios) {
+        await group.updateComplete;
+        group.value = value;
     }
 }
