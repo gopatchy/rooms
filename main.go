@@ -755,13 +755,14 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 		defer rows.Close()
 
 		type constraint struct {
-			ID           int64  `json:"id"`
-			StudentAID   int64  `json:"student_a_id"`
-			StudentAName string `json:"student_a_name"`
-			StudentBID   int64  `json:"student_b_id"`
-			StudentBName string `json:"student_b_name"`
-			Kind         string `json:"kind"`
-			Level        string `json:"level"`
+			ID           int64   `json:"id"`
+			StudentAID   int64   `json:"student_a_id"`
+			StudentAName string  `json:"student_a_name"`
+			StudentBID   int64   `json:"student_b_id"`
+			StudentBName string  `json:"student_b_name"`
+			Kind         string  `json:"kind"`
+			Level        string  `json:"level"`
+			Override     *string `json:"override"`
 		}
 
 		var constraints []constraint
@@ -776,8 +777,73 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 		if constraints == nil {
 			constraints = []constraint{}
 		}
+
+		type levelKind struct {
+			Level string `json:"level"`
+			Kind  string `json:"kind"`
+		}
+		type overrideEntry struct {
+			Names     string      `json:"names"`
+			Positives []levelKind `json:"positives"`
+			Negatives []levelKind `json:"negatives"`
+		}
+		var overrides []overrideEntry
+
+		if role == "admin" {
+			type pairKey struct{ a, b int64 }
+			pairGroups := map[pairKey][]int{}
+			for i := range constraints {
+				pk := pairKey{constraints[i].StudentAID, constraints[i].StudentBID}
+				pairGroups[pk] = append(pairGroups[pk], i)
+			}
+			isPositive := func(kind string) bool { return kind == "must" || kind == "prefer" }
+			kindLabel := map[string]string{"must": "Must", "prefer": "Prefer", "prefer_not": "Prefer Not", "must_not": "Must Not"}
+			for _, idxs := range pairGroups {
+				var posIdx, negIdx []int
+				for _, i := range idxs {
+					if isPositive(constraints[i].Kind) {
+						posIdx = append(posIdx, i)
+					} else {
+						negIdx = append(negIdx, i)
+					}
+				}
+				if len(posIdx) == 0 || len(negIdx) == 0 {
+					continue
+				}
+				var positives, negatives []levelKind
+				for _, i := range posIdx {
+					positives = append(positives, levelKind{constraints[i].Level, constraints[i].Kind})
+				}
+				for _, i := range negIdx {
+					negatives = append(negatives, levelKind{constraints[i].Level, constraints[i].Kind})
+				}
+				overrides = append(overrides, overrideEntry{
+					Names:     constraints[idxs[0]].StudentAName + " \u2192 " + constraints[idxs[0]].StudentBName,
+					Positives: positives,
+					Negatives: negatives,
+				})
+				for _, i := range idxs {
+					var opposing []int
+					if isPositive(constraints[i].Kind) {
+						opposing = negIdx
+					} else {
+						opposing = posIdx
+					}
+					parts := make([]string, len(opposing))
+					for j, o := range opposing {
+						parts[j] = strings.ToUpper(constraints[o].Level[:1]) + constraints[o].Level[1:] + " says " + kindLabel[constraints[o].Kind]
+					}
+					desc := strings.Join(parts, ", ")
+					constraints[i].Override = &desc
+				}
+			}
+		}
+		if overrides == nil {
+			overrides = []overrideEntry{}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(constraints)
+		json.NewEncoder(w).Encode(map[string]any{"constraints": constraints, "overrides": overrides})
 	}
 }
 

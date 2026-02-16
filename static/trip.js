@@ -49,10 +49,12 @@ document.getElementById('np-cost').addEventListener('change', async () => {
 let lastOveralls = {};
 
 async function loadStudents() {
-    const [students, constraints] = await Promise.all([
+    const [students, constraintData] = await Promise.all([
         api('GET', '/api/trips/' + tripID + '/students'),
         api('GET', '/api/trips/' + tripID + '/constraints')
     ]);
+    const constraints = constraintData.constraints;
+    const conflictList = constraintData.overrides;
     const kindLabels = { must: 'Must', prefer: 'Prefer', prefer_not: 'Prefer Not', must_not: 'Must Not' };
     const kindVariant = { must: 'success', prefer: 'brand', prefer_not: 'warning', must_not: 'danger' };
     const kindColor = { must: 'var(--wa-color-success-50)', prefer: 'var(--wa-color-brand-50)', prefer_not: 'var(--wa-color-warning-50)', must_not: 'var(--wa-color-danger-50)' };
@@ -60,27 +62,9 @@ async function loadStudents() {
     const isPositive = kind => kind === 'must' || kind === 'prefer';
     const capitalize = s => s.charAt(0).toUpperCase() + s.slice(1);
 
-    const pairs = {};
-    for (const c of constraints) {
-        const k = c.student_a_id + '-' + c.student_b_id;
-        if (!pairs[k]) pairs[k] = [];
-        pairs[k].push(c);
-    }
-    const conflictList = [];
     const conflictMap = {};
-    for (const group of Object.values(pairs)) {
-        const pos = group.filter(c => isPositive(c.kind));
-        const neg = group.filter(c => !isPositive(c.kind));
-        if (pos.length === 0 || neg.length === 0) continue;
-        conflictList.push({
-            names: group[0].student_a_name + ' \u2192 ' + group[0].student_b_name,
-            positives: pos.map(c => ({ level: c.level, kind: c.kind })),
-            negatives: neg.map(c => ({ level: c.level, kind: c.kind }))
-        });
-        for (const c of group) {
-            const opposing = isPositive(c.kind) ? neg : pos;
-            conflictMap[c.id] = opposing.map(o => capitalize(o.level) + ' says ' + kindLabels[o.kind]).join(', ');
-        }
+    for (const c of constraints) {
+        if (c.override) conflictMap[c.id] = c.override;
     }
 
     const kindSpan = (kind) => {
@@ -630,10 +614,11 @@ if (DOMAIN) {
 }
 
 async function renderMemberView(me) {
-    const [students, constraints] = await Promise.all([
+    const [students, constraintData] = await Promise.all([
         api('GET', '/api/trips/' + tripID + '/students'),
         api('GET', '/api/trips/' + tripID + '/constraints')
     ]);
+    const constraints = constraintData.constraints;
 
     const myStudentIDs = new Set(me.students.map(s => s.id));
     const container = document.getElementById('member-students');
