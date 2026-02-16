@@ -28,6 +28,8 @@ document.getElementById('pn-multiple').addEventListener('change', async () => {
     if (val >= 1) await api('PATCH', '/api/trips/' + tripID, { prefer_not_multiple: val });
 });
 
+let lastOveralls = {};
+
 async function loadStudents() {
     const [students, constraints] = await Promise.all([
         api('GET', '/api/trips/' + tripID + '/students'),
@@ -85,6 +87,7 @@ async function loadStudents() {
             if (eff) allOveralls[s.id][peerId] = eff;
         }
     }
+    lastOveralls = allOveralls;
 
     const mismatchList = [];
     for (const s of students) {
@@ -522,10 +525,23 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
             card.appendChild(label);
             const tags = document.createElement('div');
             tags.className = 'tags';
+            const roomIDs = result.rooms[i].map(m => m.id);
+            const violations = [];
+            for (const a of result.rooms[i]) {
+                for (const b of result.rooms[i]) {
+                    if (a.id === b.id) continue;
+                    const eff = lastOveralls[a.id]?.[b.id];
+                    if (eff && eff.kind === 'prefer_not') {
+                        violations.push({ from: a.name, to: b.name });
+                    }
+                }
+            }
             for (const member of result.rooms[i]) {
                 const tag = document.createElement('wa-tag');
                 tag.size = 'small';
                 tag.style.cursor = 'pointer';
+                const hasViolation = violations.some(v => v.from === member.name || v.to === member.name);
+                if (hasViolation) tag.variant = 'warning';
                 tag.textContent = member.name;
                 tag.addEventListener('click', () => {
                     const card = document.querySelector('[data-student-id="' + member.id + '"]');
@@ -536,7 +552,16 @@ document.getElementById('solve-btn').addEventListener('click', async () => {
                 });
                 tags.appendChild(tag);
             }
-            card.appendChild(tags);
+            if (violations.length > 0) {
+                const warn = document.createElement('div');
+                warn.style.fontSize = '0.75rem';
+                warn.style.color = 'var(--wa-color-warning-50)';
+                warn.textContent = violations.map(v => v.from + ' \u2192 ' + v.to).join(', ');
+                card.appendChild(tags);
+                card.appendChild(warn);
+            } else {
+                card.appendChild(tags);
+            }
             container.appendChild(card);
         }
         const scoreDiv = document.createElement('div');
