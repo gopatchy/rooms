@@ -1,5 +1,6 @@
 import { init, logout, api } from '/app.js';
 
+const DOMAIN = '{{.env.DOMAIN}}';
 const tripID = location.pathname.split('/').pop();
 
 const profile = await init();
@@ -461,7 +462,16 @@ async function addStudent() {
 document.getElementById('add-student-btn').addEventListener('click', addStudent);
 document.getElementById('new-student-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
 document.getElementById('new-student-email').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
-
 await loadStudents();
 await customElements.whenDefined('wa-button');
 document.body.style.opacity = 1;
+
+if (DOMAIN) {
+    document.getElementById('new-student-name').addEventListener('blur', () => {
+        const emailInput = document.getElementById('new-student-email');
+        if ((emailInput.value || '').trim()) return;
+        const name = (document.getElementById('new-student-name').value || '').trim();
+        const parts = name.toLowerCase().split(/\s+/);
+        if (parts.length >= 2) emailInput.value = parts.join('.') + '@' + DOMAIN;
+    });
+}
