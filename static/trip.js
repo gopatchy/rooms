@@ -411,11 +411,7 @@ async function loadStudents() {
 
         const addRow = document.createElement('div');
         addRow.className = 'constraint-add';
-        const levelKinds = {
-            student: ['prefer', 'prefer_not'],
-            parent: ['must_not'],
-            admin: ['must', 'prefer', 'prefer_not', 'must_not']
-        };
+        const levelKinds = me.level_kinds;
         const levelSelect = document.createElement('wa-select');
         levelSelect.size = 'small';
         for (const level of ['student', 'parent', 'admin']) {
@@ -618,9 +614,7 @@ async function renderMemberView(me) {
         ? { '': 'OK to room with', prefer: 'Would like to room with', prefer_not: 'Would prefer not to room with' }
         : { '': 'OK to room with', must_not: 'Not OK to room with' };
 
-    const kindOptions = me.role === 'student'
-        ? ['', 'prefer', 'prefer_not']
-        : ['', 'must_not'];
+    const kindOptions = ['', ...me.level_kinds[me.role]];
 
     const pendingSelects = [];
 

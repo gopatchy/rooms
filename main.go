@@ -29,6 +29,11 @@ var schema string
 var (
 	htmlTemplates *template.Template
 	jsTemplates   *texttemplate.Template
+	levelKinds    = map[string][]string{
+		"student": {"prefer", "prefer_not"},
+		"parent":  {"must_not"},
+		"admin":   {"must", "prefer", "prefer_not", "must_not"},
+	}
 )
 
 func main() {
@@ -452,7 +457,7 @@ func handleTripMe(db *sql.DB) http.HandlerFunc {
 			students = []studentInfo{}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"role": role, "students": students})
+		json.NewEncoder(w).Encode(map[string]any{"role": role, "students": students, "level_kinds": levelKinds})
 	}
 }
 
@@ -893,20 +898,13 @@ func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "students must be different", http.StatusBadRequest)
 			return
 		}
-		switch body.Level {
-		case "student":
-			if body.Kind != "prefer" && body.Kind != "prefer_not" {
-				http.Error(w, "students may only use prefer or prefer not", http.StatusBadRequest)
-				return
-			}
-		case "parent":
-			if body.Kind != "must_not" {
-				http.Error(w, "parents may only use must not", http.StatusBadRequest)
-				return
-			}
-		case "admin":
-		default:
+		validKinds := levelKinds[body.Level]
+		if validKinds == nil {
 			http.Error(w, "invalid level", http.StatusBadRequest)
+			return
+		}
+		if !slices.Contains(validKinds, body.Kind) {
+			http.Error(w, "invalid kind for level", http.StatusBadRequest)
 			return
 		}
 		if role != "admin" {
