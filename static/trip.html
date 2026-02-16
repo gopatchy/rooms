@@ -73,6 +73,9 @@
         .room-label { font-weight: bold; font-size: 0.8rem; margin-bottom: 0.2rem; }
         .solver-score { font-size: 0.8rem; margin-top: 0.3rem; color: var(--wa-color-neutral-500); }
         .divider { border: none; border-top: 1px solid #909090; margin: 0.75rem 0; }
+        .pref-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+        .pref-row .pref-name { flex: 1; font-size: 0.85rem; }
+        .pref-row wa-select { width: 14rem; }
     </style>
 </head>
 <body>
@@ -85,28 +88,33 @@
             <wa-button variant="neutral" size="small" id="logout-btn">Switch User</wa-button>
         </div>
         <h2 id="trip-name"></h2>
-        <div id="trip-settings">
-            <label>Students per room: <input id="room-size" type="number" min="1"></label>
-            <label>Prefer Not cost: <input id="pn-multiple" type="number" min="1"></label>
-            <label>No Prefer cost: <input id="np-cost" type="number" min="0"></label>
-        </div>
-        <hr class="divider">
-        <div id="conflicts"></div>
-        <div id="mismatches"></div>
-        <div id="hard-conflicts"></div>
-        <div id="solver">
-            <wa-button id="solve-btn" size="small">Solve Rooms</wa-button>
-            <div id="solver-results"></div>
-        </div>
-        <hr class="divider">
-        <div id="students"></div>
-        <wa-details summary="Add Student">
-            <div class="add-form">
-                <wa-input id="new-student-name" placeholder="Name" size="small"></wa-input>
-                <wa-input id="new-student-email" placeholder="Email" size="small"></wa-input>
-                <wa-button size="small" id="add-student-btn">Add Student</wa-button>
+        <div id="admin-view" style="display: none;">
+            <div id="trip-settings">
+                <label>Students per room: <input id="room-size" type="number" min="1"></label>
+                <label>Prefer Not cost: <input id="pn-multiple" type="number" min="1"></label>
+                <label>No Prefer cost: <input id="np-cost" type="number" min="0"></label>
             </div>
-        </wa-details>
+            <hr class="divider">
+            <div id="conflicts"></div>
+            <div id="mismatches"></div>
+            <div id="hard-conflicts"></div>
+            <div id="solver">
+                <wa-button id="solve-btn" size="small">Solve Rooms</wa-button>
+                <div id="solver-results"></div>
+            </div>
+            <hr class="divider">
+            <div id="students"></div>
+            <wa-details summary="Add Student">
+                <div class="add-form">
+                    <wa-input id="new-student-name" placeholder="Name" size="small"></wa-input>
+                    <wa-input id="new-student-email" placeholder="Email" size="small"></wa-input>
+                    <wa-button size="small" id="add-student-btn">Add Student</wa-button>
+                </div>
+            </wa-details>
+        </div>
+        <div id="member-view" style="display: none;">
+            <div id="member-students"></div>
+        </div>
     </div>
     <script type="module" src="/trip.js"></script>
 </body>

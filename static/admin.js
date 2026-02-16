@@ -24,6 +24,7 @@ async function loadTrips() {
     container.innerHTML = '';
     for (const trip of trips) {
         const card = document.createElement('wa-card');
+        card.dataset.tripId = trip.id;
 
         const nameRow = document.createElement('div');
         nameRow.style.display = 'flex';
@@ -77,7 +78,14 @@ async function loadTrips() {
             const email = input.value.trim();
             if (!email) return;
             await api('POST', '/api/trips/' + trip.id + '/admins', { email });
-            loadTrips();
+            await loadTrips();
+            const card = container.querySelector('[data-trip-id="' + trip.id + '"]');
+            if (card) {
+                const det = card.querySelector('wa-details');
+                if (det) det.open = true;
+                const inp = card.querySelector('wa-input');
+                if (inp) inp.focus();
+            }
         };
         addBtn.addEventListener('click', doAdd);
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });

@@ -5,9 +5,12 @@ const tripID = location.pathname.split('/').pop();
 
 const profile = await init();
 
-let trip;
+let trip, me;
 try {
-    trip = await api('GET', '/api/trips/' + tripID);
+    [trip, me] = await Promise.all([
+        api('GET', '/api/trips/' + tripID),
+        api('GET', '/api/trips/' + tripID + '/me')
+    ]);
 } catch (e) {
     document.body.style.opacity = 1;
     document.body.textContent = 'Access denied.';
@@ -15,11 +18,21 @@ try {
 }
 
 document.getElementById('trip-name').textContent = trip.name;
+document.getElementById('main').style.display = 'block';
+document.getElementById('logout-btn').addEventListener('click', logout);
+
+if (me.role !== 'admin') {
+    document.getElementById('member-view').style.display = 'block';
+    await renderMemberView(me);
+    await customElements.whenDefined('wa-button');
+    document.body.style.opacity = 1;
+} else {
+await (async () => {
+
+document.getElementById('admin-view').style.display = 'block';
 document.getElementById('room-size').value = trip.room_size;
 document.getElementById('pn-multiple').value = trip.prefer_not_multiple;
 document.getElementById('np-cost').value = trip.no_prefer_cost;
-document.getElementById('main').style.display = 'block';
-document.getElementById('logout-btn').addEventListener('click', logout);
 document.getElementById('room-size').addEventListener('change', async () => {
     const size = parseInt(document.getElementById('room-size').value);
     if (size >= 1) await api('PATCH', '/api/trips/' + tripID, { room_size: size });
@@ -334,10 +347,17 @@ async function loadStudents() {
         addBtn.className = 'input-action';
         addBtn.textContent = '+';
         const doAdd = async () => {
-            const email = input.value.trim();
+            const email = (input.value || '').trim();
             if (!email) return;
             await api('POST', '/api/trips/' + tripID + '/students/' + student.id + '/parents', { email });
-            loadStudents();
+            await loadStudents();
+            const reCard = container.querySelector('[data-student-id="' + student.id + '"]');
+            if (reCard) {
+                const det = reCard.querySelector('wa-details');
+                if (det) det.open = true;
+                const inp = reCard.querySelector('wa-input');
+                if (inp) inp.focus();
+            }
         };
         addBtn.addEventListener('click', doAdd);
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
@@ -604,4 +624,84 @@ if (DOMAIN) {
         const parts = name.toLowerCase().split(/\s+/);
         if (parts.length >= 2) emailInput.value = parts.join('.') + '@' + DOMAIN;
     });
+}
+
+})();
+}
+
+async function renderMemberView(me) {
+    const [students, constraints] = await Promise.all([
+        api('GET', '/api/trips/' + tripID + '/students'),
+        api('GET', '/api/trips/' + tripID + '/constraints')
+    ]);
+
+    const myStudentIDs = new Set(me.students.map(s => s.id));
+    const container = document.getElementById('member-students');
+
+    const kindLabels = me.role === 'student'
+        ? { '': 'OK to room with', prefer: 'Would like to room with', prefer_not: 'Would prefer not to room with' }
+        : { '': 'OK to room with', must_not: 'Not OK to room with' };
+
+    const kindOptions = me.role === 'student'
+        ? ['', 'prefer', 'prefer_not']
+        : ['', 'must_not'];
+
+    for (const myStudent of me.students) {
+        const card = document.createElement('wa-card');
+        const label = document.createElement('span');
+        label.className = 'student-name';
+        label.textContent = myStudent.name;
+        card.appendChild(label);
+
+        const myConstraints = {};
+        for (const c of constraints) {
+            if (c.student_a_id === myStudent.id) {
+                myConstraints[c.student_b_id] = c;
+            }
+        }
+
+        for (const other of students) {
+            if (myStudentIDs.has(other.id)) continue;
+            const row = document.createElement('div');
+            row.className = 'pref-row';
+            const name = document.createElement('span');
+            name.className = 'pref-name';
+            name.textContent = other.name;
+            row.appendChild(name);
+
+            const select = document.createElement('wa-select');
+            select.size = 'small';
+            for (const kind of kindOptions) {
+                const opt = document.createElement('wa-option');
+                opt.value = kind;
+                opt.textContent = kindLabels[kind];
+                select.appendChild(opt);
+            }
+            const existing = myConstraints[other.id];
+            const initVal = existing ? existing.kind : '';
+            select.updateComplete.then(() => { select.value = initVal; });
+
+            select.addEventListener('change', async (e) => {
+                const val = e.target.value;
+                if (val === '') {
+                    const c = myConstraints[other.id];
+                    if (c) {
+                        await api('DELETE', '/api/trips/' + tripID + '/constraints/' + c.id);
+                        delete myConstraints[other.id];
+                    }
+                } else {
+                    const result = await api('POST', '/api/trips/' + tripID + '/constraints', {
+                        student_a_id: myStudent.id,
+                        student_b_id: other.id,
+                        kind: val,
+                        level: me.role
+                    });
+                    myConstraints[other.id] = { id: result.id, kind: val, student_a_id: myStudent.id, student_b_id: other.id };
+                }
+            });
+            row.appendChild(select);
+            card.appendChild(row);
+        }
+        container.appendChild(card);
+    }
 }

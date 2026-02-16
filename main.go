@@ -19,7 +19,7 @@ import (
 	"strings"
 	texttemplate "text/template"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"google.golang.org/api/idtoken"
 )
 
@@ -69,6 +69,7 @@ func main() {
 	http.HandleFunc("DELETE /api/trips/{tripID}/admins/{adminID}", handleRemoveTripAdmin(db))
 	http.HandleFunc("GET /trip/{tripID}", serveHTML("trip.html"))
 	http.HandleFunc("GET /trip.js", serveJS("trip.js"))
+	http.HandleFunc("GET /api/trips/{tripID}/me", handleTripMe(db))
 	http.HandleFunc("GET /api/trips/{tripID}", handleGetTrip(db))
 	http.HandleFunc("PATCH /api/trips/{tripID}", handleUpdateTrip(db))
 	http.HandleFunc("GET /api/trips/{tripID}/students", handleListStudents(db))
@@ -221,6 +222,57 @@ func requireTripAdmin(db *sql.DB, w http.ResponseWriter, r *http.Request) (strin
 		return "", 0, false
 	}
 	return email, tripID, true
+}
+
+func tripRole(db *sql.DB, email string, tripID int64) (string, []int64) {
+	if isAdmin(email) || isTripAdmin(db, email, tripID) {
+		return "admin", nil
+	}
+	var studentIDs []int64
+	rows, _ := db.Query("SELECT id FROM students WHERE trip_id = $1 AND email = $2", tripID, email)
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			rows.Scan(&id)
+			studentIDs = append(studentIDs, id)
+		}
+	}
+	if len(studentIDs) > 0 {
+		return "student", studentIDs
+	}
+	rows2, _ := db.Query("SELECT s.id FROM parents p JOIN students s ON s.id = p.student_id WHERE s.trip_id = $1 AND p.email = $2", tripID, email)
+	if rows2 != nil {
+		defer rows2.Close()
+		for rows2.Next() {
+			var id int64
+			rows2.Scan(&id)
+			studentIDs = append(studentIDs, id)
+		}
+	}
+	if len(studentIDs) > 0 {
+		return "parent", studentIDs
+	}
+	return "", nil
+}
+
+func requireTripMember(db *sql.DB, w http.ResponseWriter, r *http.Request) (string, int64, string, []int64, bool) {
+	email, ok := authorize(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return "", 0, "", nil, false
+	}
+	tripID, err := strconv.ParseInt(r.PathValue("tripID"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid trip ID", http.StatusBadRequest)
+		return "", 0, "", nil, false
+	}
+	role, studentIDs := tripRole(db, email, tripID)
+	if role == "" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return "", 0, "", nil, false
+	}
+	return email, tripID, role, studentIDs, true
 }
 
 func handleAdminCheck(w http.ResponseWriter, r *http.Request) {
@@ -382,9 +434,34 @@ func handleRemoveTripAdmin(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+func handleTripMe(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, tripID, role, studentIDs, ok := requireTripMember(db, w, r)
+		if !ok {
+			return
+		}
+		type studentInfo struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		}
+		var students []studentInfo
+		for _, sid := range studentIDs {
+			var name string
+			if err := db.QueryRow("SELECT name FROM students WHERE id = $1 AND trip_id = $2", sid, tripID).Scan(&name); err == nil {
+				students = append(students, studentInfo{ID: sid, Name: name})
+			}
+		}
+		if students == nil {
+			students = []studentInfo{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"role": role, "students": students})
+	}
+}
+
 func handleGetTrip(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, tripID, ok := requireTripAdmin(db, w, r)
+		_, tripID, _, _, ok := requireTripMember(db, w, r)
 		if !ok {
 			return
 		}
@@ -402,10 +479,39 @@ func handleGetTrip(db *sql.DB) http.HandlerFunc {
 
 func handleListStudents(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, tripID, ok := requireTripAdmin(db, w, r)
+		_, tripID, role, _, ok := requireTripMember(db, w, r)
 		if !ok {
 			return
 		}
+
+		if role != "admin" {
+			rows, err := db.Query("SELECT id, name FROM students WHERE trip_id = $1 ORDER BY name", tripID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer rows.Close()
+			type studentBasic struct {
+				ID   int64  `json:"id"`
+				Name string `json:"name"`
+			}
+			var students []studentBasic
+			for rows.Next() {
+				var s studentBasic
+				if err := rows.Scan(&s.ID, &s.Name); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				students = append(students, s)
+			}
+			if students == nil {
+				students = []studentBasic{}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(students)
+			return
+		}
+
 		rows, err := db.Query(`
 			SELECT s.id, s.name, s.email, COALESCE(
 				json_agg(json_build_object('id', p.id, 'email', p.email)) FILTER (WHERE p.id IS NOT NULL),
@@ -612,17 +718,39 @@ func handleUpdateTrip(db *sql.DB) http.HandlerFunc {
 
 func handleListConstraints(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, tripID, ok := requireTripAdmin(db, w, r)
+		_, tripID, role, myStudentIDs, ok := requireTripMember(db, w, r)
 		if !ok {
 			return
 		}
-		rows, err := db.Query(`
-			SELECT rc.id, rc.student_a_id, sa.name, rc.student_b_id, sb.name, rc.kind::text, rc.level::text
-			FROM roommate_constraints rc
-			JOIN students sa ON sa.id = rc.student_a_id
-			JOIN students sb ON sb.id = rc.student_b_id
-			WHERE sa.trip_id = $1
-			ORDER BY rc.id`, tripID)
+		var query string
+		var args []any
+		switch role {
+		case "admin":
+			query = `SELECT rc.id, rc.student_a_id, sa.name, rc.student_b_id, sb.name, rc.kind::text, rc.level::text
+				FROM roommate_constraints rc
+				JOIN students sa ON sa.id = rc.student_a_id
+				JOIN students sb ON sb.id = rc.student_b_id
+				WHERE sa.trip_id = $1
+				ORDER BY rc.id`
+			args = []any{tripID}
+		case "student":
+			query = `SELECT rc.id, rc.student_a_id, sa.name, rc.student_b_id, sb.name, rc.kind::text, rc.level::text
+				FROM roommate_constraints rc
+				JOIN students sa ON sa.id = rc.student_a_id
+				JOIN students sb ON sb.id = rc.student_b_id
+				WHERE sa.trip_id = $1 AND rc.level = 'student' AND rc.student_a_id = ANY($2)
+				ORDER BY rc.id`
+			args = []any{tripID, pq.Array(myStudentIDs)}
+		case "parent":
+			query = `SELECT rc.id, rc.student_a_id, sa.name, rc.student_b_id, sb.name, rc.kind::text, rc.level::text
+				FROM roommate_constraints rc
+				JOIN students sa ON sa.id = rc.student_a_id
+				JOIN students sb ON sb.id = rc.student_b_id
+				WHERE sa.trip_id = $1 AND rc.level = 'parent' AND rc.student_a_id = ANY($2)
+				ORDER BY rc.id`
+			args = []any{tripID, pq.Array(myStudentIDs)}
+		}
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -658,7 +786,7 @@ func handleListConstraints(db *sql.DB) http.HandlerFunc {
 
 func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, tripID, ok := requireTripAdmin(db, w, r)
+		_, tripID, role, myStudentIDs, ok := requireTripMember(db, w, r)
 		if !ok {
 			return
 		}
@@ -692,6 +820,23 @@ func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "invalid level", http.StatusBadRequest)
 			return
 		}
+		if role != "admin" {
+			if body.Level != role {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			owns := false
+			for _, sid := range myStudentIDs {
+				if sid == body.StudentAID {
+					owns = true
+					break
+				}
+			}
+			if !owns {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+		}
 		var id int64
 		err := db.QueryRow(`
 			INSERT INTO roommate_constraints (student_a_id, student_b_id, kind, level)
@@ -712,7 +857,7 @@ func handleCreateConstraint(db *sql.DB) http.HandlerFunc {
 
 func handleDeleteConstraint(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, tripID, ok := requireTripAdmin(db, w, r)
+		_, tripID, role, myStudentIDs, ok := requireTripMember(db, w, r)
 		if !ok {
 			return
 		}
@@ -721,8 +866,18 @@ func handleDeleteConstraint(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "invalid constraint ID", http.StatusBadRequest)
 			return
 		}
-		result, err := db.Exec(`DELETE FROM roommate_constraints WHERE id = $1
-			AND student_a_id IN (SELECT id FROM students WHERE trip_id = $2)`, constraintID, tripID)
+		var query string
+		var args []any
+		if role == "admin" {
+			query = `DELETE FROM roommate_constraints WHERE id = $1
+				AND student_a_id IN (SELECT id FROM students WHERE trip_id = $2)`
+			args = []any{constraintID, tripID}
+		} else {
+			query = `DELETE FROM roommate_constraints WHERE id = $1
+				AND student_a_id = ANY($2) AND level = $3::constraint_level`
+			args = []any{constraintID, pq.Array(myStudentIDs), role}
+		}
+		result, err := db.Exec(query, args...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
