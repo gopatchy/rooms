@@ -432,18 +432,18 @@ async function loadStudents() {
         levelSelect.value = 'student';
         const kindSelect = document.createElement('wa-select');
         kindSelect.size = 'small';
-        const updateKinds = () => {
+        const updateKinds = (level) => {
             kindSelect.querySelectorAll('wa-option').forEach(o => o.remove());
-            for (const kind of levelKinds[levelSelect.value]) {
+            for (const kind of levelKinds[level]) {
                 const opt = document.createElement('wa-option');
                 opt.value = kind;
                 opt.textContent = kindLabels[kind];
                 kindSelect.appendChild(opt);
             }
-            kindSelect.value = levelKinds[levelSelect.value][0];
+            requestAnimationFrame(() => { kindSelect.value = levelKinds[level][0]; });
         };
-        updateKinds();
-        levelSelect.addEventListener('wa-change', updateKinds);
+        updateKinds('student');
+        levelSelect.addEventListener('wa-change', (e) => updateKinds(e.target.value));
         const studentSelect = document.createElement('wa-select');
         studentSelect.size = 'small';
         studentSelect.placeholder = 'Student\u2026';
@@ -472,7 +472,9 @@ async function loadStudents() {
             const card = document.querySelector('[data-student-id="' + student.id + '"]');
             if (card) {
                 const selects = card.querySelectorAll('.constraint-add wa-select');
-                if (selects[0]) selects[0].value = savedLevel;
+                if (selects[0]) {
+                    requestAnimationFrame(() => { selects[0].value = savedLevel; });
+                }
                 if (selects[1]) {
                     const kinds = levelKinds[savedLevel];
                     selects[1].querySelectorAll('wa-option').forEach(o => o.remove());
@@ -482,7 +484,7 @@ async function loadStudents() {
                         opt.textContent = kindLabels[kind];
                         selects[1].appendChild(opt);
                     }
-                    selects[1].value = savedKind;
+                    requestAnimationFrame(() => { selects[1].value = savedKind; });
                 }
             }
         });
