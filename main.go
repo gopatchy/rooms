@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"math"
 	"math/rand"
 	"log"
 	"net/http"
@@ -993,7 +992,81 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			return c
 		}
 
-		for restart := 0; restart < 20; restart++ {
+		uniqueGroups := make([]int, 0, len(groups))
+		for root := range groups {
+			uniqueGroups = append(uniqueGroups, root)
+		}
+		sort.Ints(uniqueGroups)
+
+		hillClimb := func(assignment []int) int {
+			currentScore := score(assignment)
+			for {
+				bestDelta := 0
+				bestMove := -1
+				bestTarget := -1
+				bestSwapJ := -1
+
+				for gi, gRoot := range uniqueGroups {
+					grp := groups[gRoot]
+					gRoom := assignment[grp[0]]
+
+					for room := 0; room < numRooms; room++ {
+						if room == gRoom { continue }
+						if roomCount(assignment, room)+len(grp) > roomSize { continue }
+						for _, m := range grp { assignment[m] = room }
+						if feasible(assignment) {
+							delta := score(assignment) - currentScore
+							if delta > bestDelta {
+								bestDelta = delta
+								bestMove = gi
+								bestTarget = room
+								bestSwapJ = -1
+							}
+						}
+						for _, m := range grp { assignment[m] = gRoom }
+					}
+
+					for gj := gi + 1; gj < len(uniqueGroups); gj++ {
+						grp2 := groups[uniqueGroups[gj]]
+						g2Room := assignment[grp2[0]]
+						if gRoom == g2Room { continue }
+						newGRoom := roomCount(assignment, gRoom) - len(grp) + len(grp2)
+						newG2Room := roomCount(assignment, g2Room) - len(grp2) + len(grp)
+						if newGRoom > roomSize || newG2Room > roomSize { continue }
+						for _, m := range grp { assignment[m] = g2Room }
+						for _, m := range grp2 { assignment[m] = gRoom }
+						if feasible(assignment) {
+							delta := score(assignment) - currentScore
+							if delta > bestDelta {
+								bestDelta = delta
+								bestMove = gi
+								bestTarget = -1
+								bestSwapJ = gj
+							}
+						}
+						for _, m := range grp { assignment[m] = gRoom }
+						for _, m := range grp2 { assignment[m] = g2Room }
+					}
+				}
+
+				if bestDelta <= 0 { break }
+
+				grp := groups[uniqueGroups[bestMove]]
+				gRoom := assignment[grp[0]]
+				if bestSwapJ < 0 {
+					for _, m := range grp { assignment[m] = bestTarget }
+				} else {
+					grp2 := groups[uniqueGroups[bestSwapJ]]
+					g2Room := assignment[grp2[0]]
+					for _, m := range grp { assignment[m] = g2Room }
+					for _, m := range grp2 { assignment[m] = gRoom }
+				}
+				currentScore += bestDelta
+			}
+			return currentScore
+		}
+
+		for restart := 0; restart < 50; restart++ {
 			if restart == 0 {
 				copy(assignment, initialAssignment)
 			} else {
@@ -1035,74 +1108,10 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 				}
 			}
 
-			currentScore := score(assignment)
-			if currentScore > bestScore {
-				bestScore = currentScore
+			s := hillClimb(assignment)
+			if s > bestScore {
+				bestScore = s
 				copy(bestAssignment, assignment)
-			}
-
-			temp := 10.0
-			cooling := 0.9995
-			iterations := 50000
-
-			for iter := 0; iter < iterations; iter++ {
-				i := rand.Intn(n)
-				iRoot := ufFind(i)
-				iGroup := groups[iRoot]
-				iRoom := assignment[i]
-
-				if rand.Intn(2) == 0 {
-					targetRoom := rand.Intn(numRooms)
-					if targetRoom == iRoom { continue }
-					newCount := roomCount(assignment, targetRoom) + len(iGroup)
-					if newCount > roomSize { continue }
-					for _, m := range iGroup { assignment[m] = targetRoom }
-					if !feasible(assignment) {
-						for _, m := range iGroup { assignment[m] = iRoom }
-						continue
-					}
-					newScore := score(assignment)
-					delta := newScore - currentScore
-					if delta >= 0 || rand.Float64() < math.Exp(float64(delta)/temp) {
-						currentScore = newScore
-						if currentScore > bestScore {
-							bestScore = currentScore
-							copy(bestAssignment, assignment)
-						}
-					} else {
-						for _, m := range iGroup { assignment[m] = iRoom }
-					}
-				} else {
-					j := rand.Intn(n)
-					if assignment[j] == iRoom { continue }
-					jRoot := ufFind(j)
-					if iRoot == jRoot { continue }
-					jGroup := groups[jRoot]
-					jRoom := assignment[j]
-					newRoomI := roomCount(assignment, iRoom) - len(iGroup) + len(jGroup)
-					newRoomJ := roomCount(assignment, jRoom) - len(jGroup) + len(iGroup)
-					if newRoomI > roomSize || newRoomJ > roomSize { continue }
-					for _, m := range iGroup { assignment[m] = jRoom }
-					for _, m := range jGroup { assignment[m] = iRoom }
-					if !feasible(assignment) {
-						for _, m := range iGroup { assignment[m] = iRoom }
-						for _, m := range jGroup { assignment[m] = jRoom }
-						continue
-					}
-					newScore := score(assignment)
-					delta := newScore - currentScore
-					if delta >= 0 || rand.Float64() < math.Exp(float64(delta)/temp) {
-						currentScore = newScore
-						if currentScore > bestScore {
-							bestScore = currentScore
-							copy(bestAssignment, assignment)
-						}
-					} else {
-						for _, m := range iGroup { assignment[m] = iRoom }
-						for _, m := range jGroup { assignment[m] = jRoom }
-					}
-				}
-				temp *= cooling
 			}
 		}
 
