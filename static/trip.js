@@ -96,6 +96,77 @@ async function loadStudents() {
         }
     }
 
+    const studentName = {};
+    for (const s of students) studentName[s.id] = s.name;
+
+    const mustAdj = {};
+    for (const s of students) {
+        for (const [bId, eff] of Object.entries(allOveralls[s.id])) {
+            if (eff.kind === 'must') {
+                const a = s.id, b = parseInt(bId);
+                if (!mustAdj[a]) mustAdj[a] = [];
+                mustAdj[a].push(b);
+                if (!mustAdj[b]) mustAdj[b] = [];
+                mustAdj[b].push(a);
+            }
+        }
+    }
+
+    const ufParent = {};
+    for (const s of students) ufParent[s.id] = s.id;
+    const ufFind = (x) => {
+        if (ufParent[x] !== x) ufParent[x] = ufFind(ufParent[x]);
+        return ufParent[x];
+    };
+    for (const s of students) {
+        for (const [bId, eff] of Object.entries(allOveralls[s.id])) {
+            if (eff.kind === 'must') {
+                const ra = ufFind(s.id), rb = ufFind(parseInt(bId));
+                if (ra !== rb) ufParent[ra] = rb;
+            }
+        }
+    }
+
+    const findMustPath = (from, to) => {
+        if (from === to) return [from];
+        const visited = new Set([from]);
+        const queue = [[from]];
+        while (queue.length > 0) {
+            const path = queue.shift();
+            const curr = path[path.length - 1];
+            for (const next of (mustAdj[curr] || [])) {
+                if (next === to) return [...path, next];
+                if (!visited.has(next)) {
+                    visited.add(next);
+                    queue.push([...path, next]);
+                }
+            }
+        }
+        return null;
+    };
+
+    const hardConflictList = [];
+    for (const s of students) {
+        for (const [bId, eff] of Object.entries(allOveralls[s.id])) {
+            if (eff.kind !== 'must_not') continue;
+            const b = parseInt(bId);
+            if (ufFind(s.id) !== ufFind(b)) continue;
+            const path = findMustPath(b, s.id);
+            if (!path) continue;
+            const chain = [];
+            for (let i = 0; i < path.length - 1; i++) {
+                const x = path[i], y = path[i + 1];
+                if (allOveralls[x]?.[y]?.kind === 'must') {
+                    chain.push({ from: studentName[x], to: studentName[y], kind: 'must' });
+                } else {
+                    chain.push({ from: studentName[y], to: studentName[x], kind: 'must' });
+                }
+            }
+            chain.push({ from: s.name, to: studentName[b], kind: 'must_not' });
+            hardConflictList.push(chain);
+        }
+    }
+
     const conflictsEl = document.getElementById('conflicts');
     const conflictsWasOpen = conflictsEl.querySelector('wa-details')?.open;
     conflictsEl.innerHTML = '';
@@ -140,6 +211,31 @@ async function loadStudents() {
             det.appendChild(div);
         }
         mismatchesEl.appendChild(det);
+    }
+
+    const hardConflictsEl = document.getElementById('hard-conflicts');
+    const hardConflictsWasOpen = hardConflictsEl.querySelector('wa-details')?.open;
+    hardConflictsEl.innerHTML = '';
+    if (hardConflictList.length > 0) {
+        const det = document.createElement('wa-details');
+        det.summary = '\u26a0 Conflicts (' + hardConflictList.length + ')';
+        if (hardConflictsWasOpen) det.open = true;
+        for (const chain of hardConflictList) {
+            const div = document.createElement('div');
+            div.className = 'conflict-row';
+            chain.forEach((link, i) => {
+                if (i === chain.length - 1 && chain.length > 1) {
+                    div.appendChild(document.createTextNode(', but '));
+                } else if (i > 0) {
+                    div.appendChild(document.createTextNode(', '));
+                }
+                div.appendChild(document.createTextNode(link.from + ' '));
+                div.appendChild(kindSpan(link.kind));
+                div.appendChild(document.createTextNode(' ' + link.to));
+            });
+            det.appendChild(div);
+        }
+        hardConflictsEl.appendChild(det);
     }
 
     const container = document.getElementById('students');
