@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS trips (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     room_size INTEGER NOT NULL DEFAULT 2,
-    prefer_not_multiple INTEGER NOT NULL DEFAULT 5
+    prefer_not_multiple INTEGER NOT NULL DEFAULT 5,
+    no_prefer_cost INTEGER NOT NULL DEFAULT 10
 );
 
 CREATE TABLE IF NOT EXISTS trip_admins (

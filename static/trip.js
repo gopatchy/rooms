@@ -17,6 +17,7 @@ try {
 document.getElementById('trip-name').textContent = trip.name;
 document.getElementById('room-size').value = trip.room_size;
 document.getElementById('pn-multiple').value = trip.prefer_not_multiple;
+document.getElementById('np-cost').value = trip.no_prefer_cost;
 document.getElementById('main').style.display = 'block';
 document.getElementById('logout-btn').addEventListener('click', logout);
 document.getElementById('room-size').addEventListener('change', async () => {
@@ -26,6 +27,10 @@ document.getElementById('room-size').addEventListener('change', async () => {
 document.getElementById('pn-multiple').addEventListener('change', async () => {
     const val = parseInt(document.getElementById('pn-multiple').value);
     if (val >= 1) await api('PATCH', '/api/trips/' + tripID, { prefer_not_multiple: val });
+});
+document.getElementById('np-cost').addEventListener('change', async () => {
+    const val = parseInt(document.getElementById('np-cost').value);
+    if (val >= 0) await api('PATCH', '/api/trips/' + tripID, { no_prefer_cost: val });
 });
 
 let lastOveralls = {};

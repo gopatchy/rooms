@@ -240,13 +240,13 @@ func handleListTrips(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		rows, err := db.Query(`
-			SELECT t.id, t.name, t.room_size, t.prefer_not_multiple, COALESCE(
+			SELECT t.id, t.name, t.room_size, t.prefer_not_multiple, t.no_prefer_cost, COALESCE(
 				json_agg(json_build_object('id', ta.id, 'email', ta.email)) FILTER (WHERE ta.id IS NOT NULL),
 				'[]'
 			)
 			FROM trips t
 			LEFT JOIN trip_admins ta ON ta.trip_id = t.id
-			GROUP BY t.id, t.name, t.room_size, t.prefer_not_multiple
+			GROUP BY t.id, t.name, t.room_size, t.prefer_not_multiple, t.no_prefer_cost
 			ORDER BY t.id`)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -263,6 +263,7 @@ func handleListTrips(db *sql.DB) http.HandlerFunc {
 			Name               string      `json:"name"`
 			RoomSize           int         `json:"room_size"`
 			PreferNotMultiple  int         `json:"prefer_not_multiple"`
+			NoPreferCost       int         `json:"no_prefer_cost"`
 			Admins             []tripAdmin `json:"admins"`
 		}
 
@@ -270,7 +271,7 @@ func handleListTrips(db *sql.DB) http.HandlerFunc {
 		for rows.Next() {
 			var t trip
 			var adminsJSON string
-			if err := rows.Scan(&t.ID, &t.Name, &t.RoomSize, &t.PreferNotMultiple, &adminsJSON); err != nil {
+			if err := rows.Scan(&t.ID, &t.Name, &t.RoomSize, &t.PreferNotMultiple, &t.NoPreferCost, &adminsJSON); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -389,14 +390,14 @@ func handleGetTrip(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		var name string
-		var roomSize, preferNotMultiple int
-		err := db.QueryRow("SELECT name, room_size, prefer_not_multiple FROM trips WHERE id = $1", tripID).Scan(&name, &roomSize, &preferNotMultiple)
+		var roomSize, preferNotMultiple, noPreferCost int
+		err := db.QueryRow("SELECT name, room_size, prefer_not_multiple, no_prefer_cost FROM trips WHERE id = $1", tripID).Scan(&name, &roomSize, &preferNotMultiple, &noPreferCost)
 		if err != nil {
 			http.Error(w, "trip not found", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"id": tripID, "name": name, "room_size": roomSize, "prefer_not_multiple": preferNotMultiple})
+		json.NewEncoder(w).Encode(map[string]any{"id": tripID, "name": name, "room_size": roomSize, "prefer_not_multiple": preferNotMultiple, "no_prefer_cost": noPreferCost})
 	}
 }
 
@@ -564,6 +565,7 @@ func handleUpdateTrip(db *sql.DB) http.HandlerFunc {
 		var body struct {
 			RoomSize          *int `json:"room_size"`
 			PreferNotMultiple *int `json:"prefer_not_multiple"`
+			NoPreferCost      *int `json:"no_prefer_cost"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -581,6 +583,12 @@ func handleUpdateTrip(db *sql.DB) http.HandlerFunc {
 				return
 			}
 		}
+		if body.NoPreferCost != nil {
+			if *body.NoPreferCost < 0 {
+				http.Error(w, "no_prefer_cost must be at least 0", http.StatusBadRequest)
+				return
+			}
+		}
 		if body.RoomSize != nil {
 			if _, err := db.Exec("UPDATE trips SET room_size = $1 WHERE id = $2", *body.RoomSize, tripID); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -589,6 +597,12 @@ func handleUpdateTrip(db *sql.DB) http.HandlerFunc {
 		}
 		if body.PreferNotMultiple != nil {
 			if _, err := db.Exec("UPDATE trips SET prefer_not_multiple = $1 WHERE id = $2", *body.PreferNotMultiple, tripID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if body.NoPreferCost != nil {
+			if _, err := db.Exec("UPDATE trips SET no_prefer_cost = $1 WHERE id = $2", *body.NoPreferCost, tripID); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -729,8 +743,8 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var roomSize, pnMultiple int
-		err := db.QueryRow("SELECT room_size, prefer_not_multiple FROM trips WHERE id = $1", tripID).Scan(&roomSize, &pnMultiple)
+		var roomSize, pnMultiple, npCost int
+		err := db.QueryRow("SELECT room_size, prefer_not_multiple, no_prefer_cost FROM trips WHERE id = $1", tripID).Scan(&roomSize, &pnMultiple, &npCost)
 		if err != nil {
 			http.Error(w, "trip not found", http.StatusNotFound)
 			return
@@ -863,16 +877,32 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			groups[root] = append(groups[root], i)
 		}
 
+		hasPrefer := make([]bool, n)
+		for pk, kind := range overalls {
+			if kind == "prefer" {
+				hasPrefer[idx[pk.a]] = true
+			}
+		}
+
 		score := func(assignment []int) int {
 			s := 0
+			gotPrefer := make([]bool, n)
 			for pk, kind := range overalls {
 				ai, bi := idx[pk.a], idx[pk.b]
 				sameRoom := assignment[ai] == assignment[bi]
 				switch kind {
 				case "prefer":
-					if sameRoom { s++ }
+					if sameRoom {
+						s++
+						gotPrefer[ai] = true
+					}
 				case "prefer_not":
 					if sameRoom { s -= pnMultiple }
+				}
+			}
+			for i := 0; i < n; i++ {
+				if hasPrefer[i] && !gotPrefer[i] {
+					s -= npCost
 				}
 			}
 			return s
