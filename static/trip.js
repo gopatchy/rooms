@@ -173,6 +173,19 @@ async function loadStudents() {
         }
     }
 
+    const mustGroups = {};
+    for (const s of students) {
+        const root = ufFind(s.id);
+        if (!mustGroups[root]) mustGroups[root] = [];
+        mustGroups[root].push(s.name);
+    }
+    const oversizedGroups = [];
+    for (const members of Object.values(mustGroups)) {
+        if (members.length > trip.room_size) {
+            oversizedGroups.push(members);
+        }
+    }
+
     const conflictsEl = document.getElementById('conflicts');
     const conflictsWasOpen = conflictsEl.querySelector('wa-details')?.open;
     conflictsEl.innerHTML = '';
@@ -222,9 +235,10 @@ async function loadStudents() {
     const hardConflictsEl = document.getElementById('hard-conflicts');
     const hardConflictsWasOpen = hardConflictsEl.querySelector('wa-details')?.open;
     hardConflictsEl.innerHTML = '';
-    if (hardConflictList.length > 0) {
+    const totalConflicts = hardConflictList.length + oversizedGroups.length;
+    if (totalConflicts > 0) {
         const det = document.createElement('wa-details');
-        det.summary = '\u26a0 Conflicts (' + hardConflictList.length + ')';
+        det.summary = '\u26a0 Conflicts (' + totalConflicts + ')';
         if (hardConflictsWasOpen) det.open = true;
         for (const chain of hardConflictList) {
             const div = document.createElement('div');
@@ -239,6 +253,13 @@ async function loadStudents() {
                 div.appendChild(kindSpan(link.kind));
                 div.appendChild(document.createTextNode(' ' + link.to));
             });
+            det.appendChild(div);
+        }
+        for (const members of oversizedGroups) {
+            const div = document.createElement('div');
+            div.className = 'conflict-row';
+            div.appendChild(kindSpan('must'));
+            div.appendChild(document.createTextNode(' group too large (' + members.length + ' for room size ' + trip.room_size + '): ' + members.join(', ')));
             det.appendChild(div);
         }
         hardConflictsEl.appendChild(det);
