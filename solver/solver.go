@@ -21,8 +21,8 @@ type Params struct {
 }
 
 var DefaultParams = Params{
-	NumRandom:  50,
-	NumPerturb: 750,
+	NumRandom:  100,
+	NumPerturb: 1500,
 	PerturbMin: 3,
 	PerturbMax: 8,
 }

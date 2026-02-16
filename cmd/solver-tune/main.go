@@ -144,8 +144,8 @@ func printStats(label string, results []runResult, runs int) {
 func main() {
 	dir := flag.String("dir", "tmp", "directory with trip/students/constraints JSON files")
 	runs := flag.Int("runs", 20, "number of solver runs per parameter set")
-	numRandom := flag.String("random", "50", "comma-separated random placement counts")
-	numPerturb := flag.String("perturb", "750", "comma-separated perturbation counts")
+	numRandom := flag.String("random", "100", "comma-separated random placement counts")
+	numPerturb := flag.String("perturb", "1500", "comma-separated perturbation counts")
 	perturbMin := flag.Int("pmin", 3, "perturbation min groups")
 	perturbMax := flag.Int("pmax", 8, "perturbation max groups")
 	flag.Parse()
