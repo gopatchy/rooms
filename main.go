@@ -1066,48 +1066,76 @@ func handleSolve(db *sql.DB) http.HandlerFunc {
 			return currentScore
 		}
 
-		for restart := 0; restart < 50; restart++ {
-			if restart == 0 {
-				copy(assignment, initialAssignment)
-			} else {
-				perm := rand.Perm(len(groupList))
-				for i := range roomCap { roomCap[i] = roomSize }
-				ok := true
-				for _, pi := range perm {
-					grp := groupList[pi]
-					placed := false
-					order := rand.Perm(numRooms)
-					for _, room := range order {
-						if roomCap[room] < len(grp) { continue }
-						valid := true
-						for _, member := range grp {
-							for p := range mustApart {
-								partner := -1
-								if p[0] == member { partner = p[1] }
-								if p[1] == member { partner = p[0] }
-								if partner >= 0 && assignment[partner] == room {
-									valid = false
-									break
-								}
+		randomPlacement := func() bool {
+			perm := rand.Perm(len(groupList))
+			for i := range roomCap { roomCap[i] = roomSize }
+			for _, pi := range perm {
+				grp := groupList[pi]
+				placed := false
+				order := rand.Perm(numRooms)
+				for _, room := range order {
+					if roomCap[room] < len(grp) { continue }
+					valid := true
+					for _, member := range grp {
+						for p := range mustApart {
+							partner := -1
+							if p[0] == member { partner = p[1] }
+							if p[1] == member { partner = p[0] }
+							if partner >= 0 && assignment[partner] == room {
+								valid = false
+								break
 							}
-							if !valid { break }
 						}
-						if !valid { continue }
-						for _, member := range grp { assignment[member] = room }
-						roomCap[room] -= len(grp)
-						placed = true
-						break
+						if !valid { break }
 					}
-					if !placed {
-						ok = false
-						break
-					}
+					if !valid { continue }
+					for _, member := range grp { assignment[member] = room }
+					roomCap[room] -= len(grp)
+					placed = true
+					break
 				}
-				if !ok {
-					copy(assignment, initialAssignment)
+				if !placed { return false }
+			}
+			return true
+		}
+
+		perturb := func(src []int, count int) {
+			copy(assignment, src)
+			indices := rand.Perm(len(uniqueGroups))
+			if count > len(indices) { count = len(indices) }
+			for _, gi := range indices[:count] {
+				grp := groups[uniqueGroups[gi]]
+				oldRoom := assignment[grp[0]]
+				rooms := rand.Perm(numRooms)
+				for _, room := range rooms {
+					if room == oldRoom { continue }
+					if roomCount(assignment, room)+len(grp) > roomSize { continue }
+					for _, m := range grp { assignment[m] = room }
+					if feasible(assignment) { break }
+					for _, m := range grp { assignment[m] = oldRoom }
 				}
 			}
+		}
 
+		copy(assignment, initialAssignment)
+		s := hillClimb(assignment)
+		if s > bestScore {
+			bestScore = s
+			copy(bestAssignment, assignment)
+		}
+
+		for restart := 0; restart < 30; restart++ {
+			if randomPlacement() {
+				s := hillClimb(assignment)
+				if s > bestScore {
+					bestScore = s
+					copy(bestAssignment, assignment)
+				}
+			}
+		}
+
+		for ils := 0; ils < 200; ils++ {
+			perturb(bestAssignment, 2+rand.Intn(3))
 			s := hillClimb(assignment)
 			if s > bestScore {
 				bestScore = s
